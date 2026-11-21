@@ -1,0 +1,28 @@
+version: 2
+
+models:
+  - name: int_fx_daily_change
+    description: Kurs + perubahan % vs hari kurs sebelumnya, 1 baris per (rate_date, pair).
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [rate_date, pair]
+    columns:
+      - name: pct_change
+        description: Null untuk baris pertama (belum ada pembanding).
+
+  - name: int_air_quality_daily
+    description: Rata-rata & puncak PM2.5 harian dari jam aktual.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [date_wib, location_id]
+    columns:
+      - name: hours_actual
+        data_tests:
+          - accepted_range:
+              arguments: { min_value: 1, max_value: 24 }
+      - name: pm25_peak_hour
+        data_tests:
+          - accepted_range:
+              arguments: { min_value: 0, max_value: 23 }

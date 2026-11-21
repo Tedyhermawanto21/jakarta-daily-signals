@@ -1,0 +1,39 @@
+[project]
+name = "jakarta-daily-signals"
+version = "0.1.0"
+description = "Ringkasan harian kurs USD/IDR, cuaca, dan kualitas udara Jakarta + peringatan Telegram."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "dbt-core>=1.12.7,<1.13",
+    "dbt-postgres>=1.11.0,<1.12",
+    "dlt[duckdb,postgres]>=1.32.0,<2",
+    "python-dotenv>=1,<2",
+    "requests>=2.32,<3",
+    "tenacity>=9,<10",
+    "tzdata>=2024.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.9,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "jds"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8,<9",
+    "ruff>=0.17.6,<0.18",
+    "sqlfluff>=3,<4",
+]

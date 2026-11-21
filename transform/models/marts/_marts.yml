@@ -1,0 +1,70 @@
+version: 2
+
+models:
+  - name: fct_daily_signals
+    description: >
+      Sinyal harian Jakarta, 1 baris per (date_wib, location_id): kurs USD/IDR (as-of),
+      cuaca, dan PM2.5 harian. Sumber utama dashboard Looker Studio.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [date_wib, location_id]
+    columns:
+      - name: date_wib
+        data_tests: [not_null]
+      - name: location_id
+        data_tests: [not_null]
+      - name: fx_is_carried_forward
+        description: True jika tidak ada kurs di tanggal ini (akhir pekan/libur ECB) dan kurs diambil dari hari kerja sebelumnya.
+        data_tests: [not_null]
+      - name: aq_is_complete
+        description: True jika 24 jam aktual tersedia. Hanya hari lengkap yang dinilai anomali.
+        data_tests: [not_null]
+      - name: pm25_category_ispu
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ["Baik", "Sedang", "Tidak Sehat", "Sangat Tidak Sehat", "Berbahaya"]
+
+  - name: fct_anomalies
+    description: 1 baris per anomali. Dibaca alert Telegram (Tahap 8), di-dedup lewat ops.alert_log.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [signal_date, alert_type, location_id]
+    columns:
+      - name: signal_date
+        data_tests: [not_null]
+      - name: alert_type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ["fx_move", "pm25_high"]
+      - name: detail
+        data_tests: [not_null]
+
+unit_tests:
+  # Data asli 90 hari belum pernah memicu kurs > 1%, jadi aturan dibuktikan dengan data buatan.
+  - name: anomaly_rules_thresholds_and_complete_days
+    description: >
+      Kurs: |perubahan| harus LEBIH DARI 1% (tepat 1.00 tidak). PM2.5: rata-rata harus
+      LEBIH DARI 55 dan hanya untuk hari lengkap.
+    model: fct_anomalies
+    given:
+      - input: ref('int_fx_daily_change')
+        rows:
+          - { rate_date: 2026-11-16, pair: USD/IDR, rate: 18000, prev_rate_date: 2026-11-13, prev_rate: 18000, pct_change: 0.00 }
+          - { rate_date: 2026-11-17, pair: USD/IDR, rate: 18180, prev_rate_date: 2026-11-16, prev_rate: 18000, pct_change: 1.00 }
+          - { rate_date: 2026-11-18, pair: USD/IDR, rate: 18400, prev_rate_date: 2026-11-17, prev_rate: 18180, pct_change: 1.21 }
+          - { rate_date: 2026-11-19, pair: USD/IDR, rate: 18100, prev_rate_date: 2026-11-18, prev_rate: 18400, pct_change: -1.63 }
+      - input: ref('fct_daily_signals')
+        rows:
+          - { date_wib: 2026-11-16, location_id: jkt_monas, aq_is_complete: true, pm25_avg: 55.0, pm25_max: 80, pm25_peak_hour: 6, pm25_category_ispu: Sedang }
+          - { date_wib: 2026-11-17, location_id: jkt_monas, aq_is_complete: true, pm25_avg: 60.2, pm25_max: 99, pm25_peak_hour: 22, pm25_category_ispu: Tidak Sehat }
+          - { date_wib: 2026-11-18, location_id: jkt_monas, aq_is_complete: false, pm25_avg: 90.0, pm25_max: 120, pm25_peak_hour: 5 }
+    expect:
+      rows:
+        - { signal_date: 2026-11-18, location_id: all, alert_type: fx_move, detail: "USD/IDR 18.400 (+1,21% vs 17 Nov)" }
+        - { signal_date: 2026-11-19, location_id: all, alert_type: fx_move, detail: "USD/IDR 18.100 (-1,63% vs 18 Nov)" }
+        - { signal_date: 2026-11-17, location_id: jkt_monas, alert_type: pm25_high, detail: "PM2.5 rata-rata 60,2 µg/m³ (Tidak Sehat), puncak 99,0 µg/m³ jam 22:00 WIB" }
