@@ -1,0 +1,36 @@
+# --- Rahasia / kredensial (JANGAN di-commit) ---
+.env
+.env.*
+!.env.example
+.dlt/secrets.toml
+*.pem
+*credentials*.json
+
+# --- Python / uv ---
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# --- dlt (state & data lokal) ---
+.dlt/.sources
+data/
+*.duckdb
+*.duckdb.wal
+_storage/
+
+# --- dbt ---
+transform/target/
+transform/dbt_packages/
+transform/logs/
+logs/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

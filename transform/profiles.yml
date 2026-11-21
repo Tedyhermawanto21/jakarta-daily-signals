@@ -1,0 +1,17 @@
+# Tidak ada rahasia di file ini. Nilai DBT_PG_* diisi oleh `python -m jds.run_dbt`
+# dari DATABASE_URL (.env lokal / GitHub Secrets), jadi kredensial tetap satu sumber.
+jds:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_PG_HOST') }}"
+      port: "{{ env_var('DBT_PG_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_PG_USER') }}"
+      password: "{{ env_var('DBT_PG_PASSWORD') }}"
+      dbname: "{{ env_var('DBT_PG_DBNAME') }}"
+      schema: staging
+      sslmode: "{{ env_var('DBT_PG_SSLMODE', 'require') }}"
+      threads: 4
+      connect_timeout: 15
+      retries: 3 # Neon cold start

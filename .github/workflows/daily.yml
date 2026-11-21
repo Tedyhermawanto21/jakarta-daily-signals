@@ -1,0 +1,76 @@
+name: daily
+
+# Ringkasan harian Jakarta: ingest (dlt) -> transform + test (dbt) -> Telegram.
+# Setiap langkah idempoten, jadi "Re-run" aman. Langkah gagal = langkah berikutnya tidak jalan.
+on:
+  schedule:
+    - cron: "17 0 * * *" # 00:17 UTC = 07:17 WIB. Menit "aneh" agar tidak antre di menit :00.
+  workflow_dispatch:
+    inputs:
+      start:
+        description: "Tanggal awal YYYY-MM-DD (opsional, untuk backfill)"
+        required: false
+        default: ""
+      end:
+        description: "Tanggal akhir YYYY-MM-DD (opsional, default hari ini WIB)"
+        required: false
+        default: ""
+      send_alert:
+        description: "Kirim ringkasan Telegram"
+        type: boolean
+        default: true
+
+concurrency:
+  group: daily # jangan sampai 2 run menulis ke database bersamaan
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }} # Neon branch production
+      PYTHONUNBUFFERED: "1"
+      LOG_LEVEL: INFO
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+
+      - name: Setup uv (+ Python dari .python-version)
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.5"
+          enable-cache: true
+
+      - name: Install dependensi (persis sesuai uv.lock)
+        run: uv sync --locked --no-dev
+
+      - name: Siapkan schema (idempoten)
+        run: uv run python -m jds.check_db --init
+
+      - name: Ingest -> Neon (dlt, merge)
+        env:
+          # Input lewat env, BUKAN ${{ }} langsung di skrip: mencegah script injection.
+          START: ${{ inputs.start }}
+          END: ${{ inputs.end }}
+        run: |
+          args=(--source all --dest postgres)
+          if [ -n "$START" ]; then args+=(--start "$START"); fi
+          if [ -n "$END" ]; then args+=(--end "$END"); fi
+          uv run python -m jds.pipeline "${args[@]}"
+
+      - name: Transform + test (dbt build)
+        run: uv run python -m jds.run_dbt build
+
+      - name: Source freshness
+        run: uv run python -m jds.run_dbt source freshness
+
+      - name: Ringkasan Telegram (sekali per hari)
+        if: github.event_name == 'schedule' || inputs.send_alert
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: uv run python -m jds.alerts.run_alerts
