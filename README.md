@@ -2,7 +2,7 @@
 
 Ringkasan harian kurs USD/IDR, cuaca, dan kualitas udara Jakarta, plus peringatan Telegram saat ada anomali.
 
-Status: **Tahap 10 (CI di setiap PR)**. Rencana lengkap ada di [docs/PLAN.md](docs/PLAN.md).
+Status: **Tahap 11 (dashboard Looker Studio)**. Rencana lengkap ada di [docs/PLAN.md](docs/PLAN.md).
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)): ruff + sqlfluff + pytest + `dbt parse`,
 lalu `dbt build` ke schema sementara `ci_pr_<n>_*` di Neon branch dev (dihapus setelah run).
@@ -18,3 +18,6 @@ copy .env.example .env  # lalu isi nilainya (jangan di-commit)
 uv run dlt --version
 uv run dbt --version
 ```
+
+Dashboard: Looker Studio membaca tabel `marts.dash_*` lewat user read-only `looker_reader`
+([sql/grants_looker_reader.sql](sql/grants_looker_reader.sql), dicek dengan `uv run python -m jds.check_reader`).

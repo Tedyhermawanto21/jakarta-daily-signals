@@ -44,6 +44,57 @@ models:
       - name: detail
         data_tests: [not_null]
 
+  - name: dash_daily_signals
+    description: >
+      Sumber dashboard (pertanyaan 1, 2, 4): 1 baris per hari AKTUAL per lokasi, dengan penanda
+      anomali 0/1 dari fct_anomalies. Dibaca Looker Studio lewat user looker_reader.
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [date_wib, location_id]
+    columns:
+      - name: fx_pct_change_day
+        description: Perubahan % kurs hanya di hari kurs terbit; null di akhir pekan/libur ECB.
+      - name: fx_anomaly_flag
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+      - name: pm25_anomaly_flag
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+                quote: false
+
+  - name: dash_air_quality_hourly
+    description: "Sumber dashboard (pertanyaan 3): PM2.5 per jam WIB, hanya jam aktual."
+    data_tests:
+      - unique_combination:
+          arguments:
+            columns: [ts_wib, location_id]
+    columns:
+      - name: hour_wib
+        data_tests:
+          - not_null
+          - accepted_range:
+              arguments: { min_value: 0, max_value: 23 }
+
+  - name: dash_latest_summary
+    description: >
+      Sumber scorecard dashboard (pertanyaan 5): 1 baris per lokasi untuk hari aktual terakhir,
+      status anomali, dan prakiraan hari berikutnya.
+    columns:
+      - name: location_id
+        data_tests: [unique, not_null]
+      - name: summary_date
+        data_tests: [not_null]
+      - name: status_text
+        data_tests: [not_null]
+
 unit_tests:
   # Data asli 90 hari belum pernah memicu kurs > 1%, jadi aturan dibuktikan dengan data buatan.
   - name: anomaly_rules_thresholds_and_complete_days
@@ -68,3 +119,23 @@ unit_tests:
         - { signal_date: 2026-11-18, location_id: all, alert_type: fx_move, detail: "USD/IDR 18.400 (+1,21% vs 17 Nov)" }
         - { signal_date: 2026-11-19, location_id: all, alert_type: fx_move, detail: "USD/IDR 18.100 (-1,63% vs 18 Nov)" }
         - { signal_date: 2026-11-17, location_id: jkt_monas, alert_type: pm25_high, detail: "PM2.5 rata-rata 60,2 µg/m³ (Tidak Sehat), puncak 99,0 µg/m³ jam 22:00 WIB" }
+
+  - name: dash_flags_count_weekend_fx_once
+    description: >
+      Kurs akhir pekan adalah kurs Jumat yang diteruskan: perubahan % dan penanda anomali kurs
+      hanya muncul di hari kurs terbit. Hari prakiraan tidak ikut.
+    model: dash_daily_signals
+    given:
+      - input: ref('fct_daily_signals')
+        rows:
+          - { date_wib: 2026-11-13, location_id: jkt_monas, weather_is_forecast: false, fx_rate_date: 2026-11-13, fx_is_carried_forward: false, fx_pct_change: 1.50 }
+          - { date_wib: 2026-11-14, location_id: jkt_monas, weather_is_forecast: false, fx_rate_date: 2026-11-13, fx_is_carried_forward: true, fx_pct_change: 1.50 }
+          - { date_wib: 2026-11-15, location_id: jkt_monas, weather_is_forecast: true, fx_rate_date: 2026-11-13, fx_is_carried_forward: true, fx_pct_change: 1.50 }
+      - input: ref('fct_anomalies')
+        rows:
+          - { signal_date: 2026-11-13, location_id: all, alert_type: fx_move }
+          - { signal_date: 2026-11-14, location_id: jkt_monas, alert_type: pm25_high }
+    expect:
+      rows:
+        - { date_wib: 2026-11-13, fx_pct_change_day: 1.50, fx_anomaly_flag: 1, pm25_anomaly_flag: 0 }
+        - { date_wib: 2026-11-14, fx_pct_change_day: null, fx_anomaly_flag: 0, pm25_anomaly_flag: 1 }
