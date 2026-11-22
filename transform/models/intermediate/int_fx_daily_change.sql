@@ -1,7 +1,10 @@
 -- Perubahan kurs vs HARI KURS SEBELUMNYA yang tersedia (bukan "kemarin"):
 -- ECB tidak terbit di akhir pekan/libur, jadi Senin dibandingkan dengan Jumat.
 with rates as (
-    select rate_date, pair, rate
+    select
+        rate_date,
+        pair,
+        rate
     from {{ ref('stg_fx_rates') }}
 ),
 
