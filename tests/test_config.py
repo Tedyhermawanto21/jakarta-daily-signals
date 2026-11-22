@@ -41,3 +41,31 @@ def test_auth_error_is_not_retried():
 
 def test_timeout_is_retried():
     assert _is_transient(psycopg2.OperationalError("timeout expired")) is True
+
+
+def test_expected_host_accepts_matching_endpoint_or_full_host(monkeypatch):
+    url = "postgresql://u:p@ep-prod-123.c-3.ap-southeast-1.aws.neon.tech/jds?sslmode=require"
+    monkeypatch.setenv("DATABASE_URL", url)
+    for expected in ("ep-prod-123", "EP-PROD-123.c-3.ap-southeast-1.aws.neon.tech"):
+        monkeypatch.setenv("EXPECTED_DB_HOST", expected)
+        assert get_database_url(load_env=False) == url
+
+
+def test_expected_host_rejects_dev_url_in_production(monkeypatch):
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql://u:p@ep-dev-999.c-3.ap-southeast-1.aws.neon.tech/jds?sslmode=require",
+    )
+    monkeypatch.setenv("EXPECTED_DB_HOST", "ep-prod-123")
+    with pytest.raises(ConfigError, match="bukan EXPECTED_DB_HOST"):
+        get_database_url(load_env=False)
+
+
+def test_expected_host_is_optional_and_ignored_for_other_urls(monkeypatch):
+    url = "postgresql://u:p@ep-dev-999.neon.tech/jds?sslmode=require"
+    monkeypatch.delenv("EXPECTED_DB_HOST", raising=False)
+    monkeypatch.setenv("DATABASE_URL", url)
+    assert get_database_url(load_env=False) == url
+    monkeypatch.setenv("EXPECTED_DB_HOST", "ep-prod-123")
+    monkeypatch.setenv("LOOKER_READER_URL", url)  # cek host hanya untuk DATABASE_URL
+    assert get_database_url(load_env=False, env_name="LOOKER_READER_URL") == url

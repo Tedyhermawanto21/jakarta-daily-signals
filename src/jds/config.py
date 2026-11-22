@@ -45,7 +45,27 @@ def get_database_url(load_env: bool = True, env_name: str = "DATABASE_URL") -> s
         raise ConfigError(f"{env_name} harus diawali 'postgresql://'.")
     if "sslmode=" not in url:
         raise ConfigError(f"{env_name} wajib memuat 'sslmode=require' (Neon mewajibkan SSL).")
+    if env_name == "DATABASE_URL":
+        check_expected_host(url)
     return url
+
+
+def check_expected_host(url: str) -> None:
+    """Tolak URL yang mengarah ke host lain dari EXPECTED_DB_HOST (jika env itu diisi).
+
+    Pengaman untuk workflow production: secret DATABASE_URL yang tidak sengaja diisi URL
+    branch dev akan membuat workflow gagal di awal, bukan diam-diam menulis ke database
+    yang salah (pernah terjadi di Tahap 11). Nilai boleh endpoint ID (ep-xxx) atau host penuh.
+    """
+    expected = os.getenv("EXPECTED_DB_HOST", "").strip().lower()
+    if not expected:
+        return
+    host = (urlsplit(url).hostname or "").lower()
+    if expected not in (host, host.split(".", 1)[0]):
+        raise ConfigError(
+            f"DATABASE_URL mengarah ke host '{host}', bukan EXPECTED_DB_HOST '{expected}'. "
+            "Periksa secret DATABASE_URL (production vs dev)."
+        )
 
 
 def mask_url(url: str) -> str:

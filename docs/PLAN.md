@@ -1,6 +1,6 @@
 # Jakarta Daily Signals — Rencana Proyek
 
-> Status: perencanaan (belum ada kode). Disusun 2026-11-21.
+> Status: **Tahap 0–12 selesai** (2026-11-22). Tinggal DoD #1: cron 7 hari berturut-turut (mulai 2026-11-22). Disusun 2026-11-21.
 > **Revisi 2026-11-21:** gudang data diganti dari BigQuery ke **Neon (Postgres serverless, gratis tanpa kartu)** karena billing account Google Cloud tidak bisa diaktifkan. Dashboard tetap **Looker Studio** (gratis), tersambung lewat konektor PostgreSQL.
 
 ---
@@ -26,13 +26,13 @@ Informasi harian yang relevan untuk warga dan pekerja di Jakarta tersebar di ban
 
 ### Definisi selesai (Definition of Done)
 - [ ] Workflow GitHub Actions terjadwal berjalan otomatis setiap hari selama **≥ 7 hari berturut-turut** tanpa intervensi.
-- [ ] Data mentah dan mart ada di **Neon Postgres**. **Menjalankan ulang untuk tanggal yang sama tidak menambah baris** (terbukti lewat query hitung baris).
-- [ ] `dbt build` lulus, dengan test `unique`, `not_null`, `accepted_range`, dan freshness.
-- [ ] Setiap PR menjalankan CI (lint + `dbt build` di schema CI terpisah). PR yang merusak test berstatus merah.
-- [ ] Telegram mengirim peringatan saat ambang terlampaui, **maksimal 1 kali per anomali per tanggal** walau pipeline dijalankan ulang.
-- [ ] Dashboard Looker Studio publik menjawab 5 pertanyaan di atas, memakai user database **read-only**.
-- [ ] README berisi diagram arsitektur, cara menjalankan lokal, screenshot dashboard, dan keputusan desain (termasuk alasan pindah dari BigQuery).
-- [ ] Tidak ada kredensial di repo (dicek dengan `git log -p | grep -iE "postgres(ql)?://[^ ]+:[^ ]+@"` → kosong).
+- [x] Data mentah dan mart ada di **Neon Postgres**. **Menjalankan ulang untuk tanggal yang sama tidak menambah baris** (terbukti lewat query hitung baris).
+- [x] `dbt build` lulus, dengan test `unique`, `not_null`, `accepted_range`, dan freshness.
+- [x] Setiap PR menjalankan CI (lint + `dbt build` di schema CI terpisah). PR yang merusak test berstatus merah.
+- [x] Telegram mengirim peringatan saat ambang terlampaui, **maksimal 1 kali per anomali per tanggal** walau pipeline dijalankan ulang.
+- [x] Dashboard Looker Studio publik menjawab 5 pertanyaan di atas, memakai user database **read-only**.
+- [x] README berisi diagram arsitektur, cara menjalankan lokal, screenshot dashboard, dan keputusan desain (termasuk alasan pindah dari BigQuery).
+- [x] Tidak ada kredensial di repo. Dicek dengan GitGuardian di setiap PR dan pemindaian lokal terhadap nilai asli `.env`. (Pola generik `git log -p | grep -iE "postgres(ql)?://[^ ]+:[^ ]+@"` memberi *false positive* pada contoh format dan data uji palsu, seperti `<password>` dan `p%40ss`.)
 
 ---
 
@@ -215,7 +215,7 @@ serverless-cloud-data/                # repo: jakarta-daily-signals
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alert | `.env` lokal + GitHub Secrets |
 | user `looker_reader` + password | Looker Studio saja | hanya di Looker Studio, tidak di repo |
 
-Format `DATABASE_URL`: `postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=require`. dlt membaca lewat env `DESTINATION__POSTGRES__CREDENTIALS`, dbt lewat `env_var()` di `profiles.yml`.
+Format `DATABASE_URL`: `postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=require`. Semua modul membaca `DATABASE_URL` lewat `jds.config` (dlt menerimanya sebagai argumen `credentials`; dbt lewat `jds.run_dbt` yang memecahnya menjadi `DBT_PG_*` untuk `profiles.yml`). Workflow production juga memeriksa host terhadap repository variable `EXPECTED_DB_HOST`.
 
 ---
 
