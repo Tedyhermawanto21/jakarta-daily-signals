@@ -90,7 +90,7 @@ Telegram, serta kedua API dipakai di paket gratis.
 - **Alert maksimal 1× per hari:** baris `ops.alert_log` dipesan dulu (`sending`), pesan dikirim, lalu statusnya
   ditandai `sent` (pola *at-most-once*).
 - **Test data:** test `not_null`, `unique`, rentang nilai, tidak ada tanggal bolong, 24 jam per hari, unit test
-  aturan anomali, dan source freshness. Totalnya 63 node dbt dan 72 test pytest.
+  aturan anomali, dan source freshness. Totalnya 63 node dbt dan 73 test pytest.
 - **CI di setiap PR:** ruff, sqlfluff, pytest, dan `dbt parse` (tanpa rahasia), lalu `dbt build` ke schema
   sementara `ci_pr_<n>` di **branch dev** Neon, yang dihapus setelah run. Bukti: [PR #1](https://github.com/Tedyhermawanto21/jakarta-daily-signals/pull/1)
   memuat commit yang sengaja merusak aturan anomali (🔴), lalu commit yang memperbaikinya (🟢).
