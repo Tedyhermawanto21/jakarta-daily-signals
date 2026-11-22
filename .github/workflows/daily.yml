@@ -1,27 +1,25 @@
 name: daily
 
-# Ringkasan harian Jakarta: ingest (dlt) -> transform + test (dbt) -> Telegram.
-# Setiap langkah idempoten, jadi "Re-run" aman. Langkah gagal = langkah berikutnya tidak jalan.
 on:
   schedule:
-    - cron: "17 0 * * *" # 00:17 UTC = 07:17 WIB. Menit "aneh" agar tidak antre di menit :00.
+    - cron: "17 0 * * *" # 07:17 WIB, off the top of the hour to avoid queueing
   workflow_dispatch:
     inputs:
       start:
-        description: "Tanggal awal YYYY-MM-DD (opsional, untuk backfill)"
+        description: "Start date YYYY-MM-DD (optional, for backfills)"
         required: false
         default: ""
       end:
-        description: "Tanggal akhir YYYY-MM-DD (opsional, default hari ini WIB)"
+        description: "End date YYYY-MM-DD (optional, defaults to today in WIB)"
         required: false
         default: ""
       send_alert:
-        description: "Kirim ringkasan Telegram"
+        description: "Send the Telegram summary"
         type: boolean
         default: true
 
 concurrency:
-  group: daily # jangan sampai 2 run menulis ke database bersamaan
+  group: daily
   cancel-in-progress: false
 
 permissions:
@@ -32,38 +30,36 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }} # Neon branch production
-      # Endpoint ID production (ep-...), disimpan sebagai repository VARIABLE (bukan rahasia).
-      # jds.config menolak DATABASE_URL yang host-nya berbeda -> secret salah isi = gagal di awal.
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
       EXPECTED_DB_HOST: ${{ vars.EXPECTED_DB_HOST }}
       PYTHONUNBUFFERED: "1"
       LOG_LEVEL: INFO
     steps:
-      - name: Pastikan pengaman host production aktif
+      - name: Require the production host guard
         run: |
           if [ -z "$EXPECTED_DB_HOST" ]; then
-            echo "::error::Repository variable EXPECTED_DB_HOST belum diisi (Settings > Secrets and variables > Actions > Variables)."
+            echo "::error::Repository variable EXPECTED_DB_HOST is not set (Settings > Secrets and variables > Actions > Variables)."
             exit 1
           fi
 
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
-      - name: Setup uv (+ Python dari .python-version)
+      - name: Set up uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.5"
           enable-cache: true
 
-      - name: Install dependensi (persis sesuai uv.lock)
+      - name: Install dependencies from uv.lock
         run: uv sync --locked --no-dev
 
-      - name: Siapkan schema (idempoten)
+      - name: Create schemas
         run: uv run python -m jds.check_db --init
 
-      - name: Ingest -> Neon (dlt, merge)
+      - name: Ingest to Neon (dlt, merge)
         env:
-          # Input lewat env, BUKAN ${{ }} langsung di skrip: mencegah script injection.
+          # Inputs go through env, never ${{ }} inside the script, to prevent injection.
           START: ${{ inputs.start }}
           END: ${{ inputs.end }}
         run: |
@@ -72,13 +68,13 @@ jobs:
           if [ -n "$END" ]; then args+=(--end "$END"); fi
           uv run python -m jds.pipeline "${args[@]}"
 
-      - name: Transform + test (dbt build)
+      - name: Transform and test (dbt build)
         run: uv run python -m jds.run_dbt build
 
       - name: Source freshness
         run: uv run python -m jds.run_dbt source freshness
 
-      - name: Ringkasan Telegram (sekali per hari)
+      - name: Telegram summary (once per day)
         if: github.event_name == 'schedule' || inputs.send_alert
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

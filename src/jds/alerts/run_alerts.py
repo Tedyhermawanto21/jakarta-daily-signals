@@ -1,16 +1,12 @@
-"""Kirim ringkasan harian ke Telegram, maksimal SEKALI per tanggal laporan.
+"""Send the daily summary to Telegram, at most once per report date.
 
-    uv run python -m jds.alerts.run_alerts --dry-run            # tampilkan pesan, tanpa kirim
-    uv run python -m jds.alerts.run_alerts                      # kirim (sekali per hari)
-    uv run python -m jds.alerts.run_alerts --date 2026-11-18    # tanggal laporan tertentu
+    uv run python -m jds.alerts.run_alerts --dry-run            # print, do not send
+    uv run python -m jds.alerts.run_alerts                      # send (once per day)
+    uv run python -m jds.alerts.run_alerts --date 2026-11-18    # a specific report date
 
-Dedup lewat ops.alert_log dengan pola reservasi (at-most-once):
-  1. INSERT baris 'daily_summary' status 'sending' (PK mencegah 2 run mengirim bersamaan)
-  2. kirim ke Telegram
-  3. UPDATE status 'sent' + catat anomali yang ikut dilaporkan
-Gagal kirim -> reservasi dihapus (run berikutnya mencoba lagi).
-Proses mati di antara 2 dan 3 -> status tertinggal 'sending': TIDAK dikirim ulang otomatis
-(mungkin sudah terkirim), run keluar dengan kode 1 supaya terlihat dan dicek manual.
+At-most-once via ops.alert_log: reserve a 'sending' row (the primary key blocks concurrent
+runs), send, then mark it 'sent'. A failed send releases the reservation. A row left in
+'sending' (process died after sending) is never resent automatically; the run exits 1 instead.
 """
 
 from __future__ import annotations
@@ -64,7 +60,7 @@ class AlertStore(Protocol):
 
 
 class PgAlertStore:
-    """Implementasi Postgres (Neon). Setiap operasi tulis di-commit sendiri."""
+    """Postgres implementation. Every write commits on its own."""
 
     def __init__(self, conn, location_id: str):
         self.conn = conn
@@ -139,7 +135,7 @@ class PgAlertStore:
     def mark_sent(
         self, report_date: date, anomalies: list[Anomaly], message_id: int, text: str
     ) -> None:
-        with self.conn, self.conn.cursor() as cur:  # satu transaksi
+        with self.conn, self.conn.cursor() as cur:
             cur.execute(
                 "UPDATE ops.alert_log SET status = 'sent', sent_at = now(), "
                 "telegram_message_id = %s, detail = %s "
@@ -164,37 +160,35 @@ def run(
     yesterday, today = store.load_signals(report_date)
     if yesterday is None and today is None:
         log.error(
-            "Tidak ada data di marts.fct_daily_signals untuk %s. Jalankan pipeline + dbt.",
+            "No rows in marts.fct_daily_signals for %s. Run the pipeline and dbt first.",
             report_date,
         )
         return 1
 
-    fx_date = (yesterday or {}).get("fx_rate_date")  # kurs as-of kemarin (lihat rules.py)
+    fx_date = (yesterday or {}).get("fx_rate_date")
     candidates = store.load_candidates(report_date - timedelta(days=1), fx_date)
     anomalies = new_anomalies(candidates, store.sent_keys(candidates))
     text = build_message(report_date, yesterday, today, anomalies)
-    log.info(
-        "Anomali: %d kandidat, %d baru (belum pernah dilaporkan)", len(candidates), len(anomalies)
-    )
+    log.info("Anomalies: %d candidates, %d not reported before", len(candidates), len(anomalies))
 
     if dry_run:
-        log.info("DRY RUN: pesan TIDAK dikirim, alert_log TIDAK diubah.\n%s", text)
+        log.info("DRY RUN: message NOT sent, alert_log NOT changed.\n%s", text)
         return 0
 
     status = store.summary_status(report_date)
     if status == "sent":
-        log.info("Ringkasan %s sudah terkirim (already sent), skip.", report_date)
+        log.info("Summary for %s already sent, skipping.", report_date)
         return 0
     if status == "sending":
         log.error(
-            "Ringkasan %s berstatus 'sending' dari run yang terputus. Tidak dikirim ulang "
-            "(mungkin sudah terkirim). Cek Telegram; jika belum ada, hapus baris itu di "
-            "ops.alert_log lalu jalankan lagi.",
+            "Summary for %s is stuck in 'sending' from an interrupted run and is not resent "
+            "(it may have been delivered). Check Telegram; if it is missing, delete that row "
+            "from ops.alert_log and run again.",
             report_date,
         )
         return 1
     if not store.reserve_summary(report_date):
-        log.info("Ringkasan %s sedang/sudah dikirim run lain, skip.", report_date)
+        log.info("Summary for %s is being sent by another run, skipping.", report_date)
         return 0
 
     assert sender is not None
@@ -202,21 +196,19 @@ def run(
         message_id = sender(text)
     except Exception:
         store.release_summary(report_date)
-        log.error("Gagal kirim; reservasi dihapus, run berikutnya akan mencoba lagi.")
+        log.error("Send failed; reservation released so the next run retries.")
         raise
     store.mark_sent(report_date, anomalies, message_id, text)
-    log.info(
-        "Terkirim ke Telegram (message_id=%s), %d anomali dicatat.", message_id, len(anomalies)
-    )
+    log.info("Sent to Telegram (message_id=%s), %d anomalies logged.", message_id, len(anomalies))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     setup_logging()
-    parser = argparse.ArgumentParser(description="Ringkasan harian -> Telegram")
-    parser.add_argument("--dry-run", action="store_true", help="tampilkan pesan tanpa mengirim")
+    parser = argparse.ArgumentParser(description="Daily summary -> Telegram")
+    parser.add_argument("--dry-run", action="store_true", help="print the message, do not send")
     parser.add_argument(
-        "--date", type=date.fromisoformat, help="tanggal laporan (default: hari ini WIB)"
+        "--date", type=date.fromisoformat, help="report date (default: today in WIB)"
     )
     args = parser.parse_args(argv)
     report_date = args.date or today_wib()
@@ -231,13 +223,13 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", exc)
         return 2
 
-    log.info("Laporan %s -> %s", report_date, mask_url(url))
+    log.info("Report %s -> %s", report_date, mask_url(url))
     conn = connect(url)
     try:
         store = PgAlertStore(conn, LOCATIONS[0].location_id)
         return run(report_date, store, sender, args.dry_run)
     except Exception as exc:
-        log.error("Alert gagal: %s", exc)
+        log.error("Alert failed: %s", exc)
         return 1
     finally:
         conn.close()

@@ -1,6 +1,5 @@
-# Output kompilasi dbt, bukan kode sumber.
 transform/target/
 transform/dbt_packages/
 transform/logs/
-# Blok {% test %} tidak dipahami templater jinja sqlfluff (hasil "fix"-nya merusak indentasi).
+# The jinja templater does not understand {% test %} blocks.
 transform/tests/generic/

@@ -2,17 +2,17 @@ version: 2
 
 models:
   - name: int_fx_daily_change
-    description: Kurs + perubahan % vs hari kurs sebelumnya, 1 baris per (rate_date, pair).
+    description: Rate and % change vs the previous published rate, one row per (rate_date, pair).
     data_tests:
       - unique_combination:
           arguments:
             columns: [rate_date, pair]
     columns:
       - name: pct_change
-        description: Null untuk baris pertama (belum ada pembanding).
+        description: Null for the first row, which has nothing to compare with.
 
   - name: int_air_quality_daily
-    description: Rata-rata & puncak PM2.5 harian dari jam aktual.
+    description: Daily PM2.5 mean and peak from actual hours.
     data_tests:
       - unique_combination:
           arguments:

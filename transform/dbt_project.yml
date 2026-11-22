@@ -8,12 +8,12 @@ macro-paths: ["macros"]
 clean-targets: ["target", "dbt_packages"]
 
 flags:
-  send_anonymous_usage_stats: false # konsisten dengan dlt: tanpa telemetri
+  send_anonymous_usage_stats: false
 
 vars:
   fx_pair: "USD/IDR"
-  fx_change_threshold_pct: 1.0 # anomali kurs: |perubahan| > 1% vs hari kurs sebelumnya
-  pm25_threshold: 55 # anomali udara: rata-rata harian PM2.5 > 55 µg/m³ (hari lengkap)
+  fx_change_threshold_pct: 1.0 # |change| vs the previous published rate
+  pm25_threshold: 55 # daily mean PM2.5 in µg/m³, complete days only
 
 models:
   jds:

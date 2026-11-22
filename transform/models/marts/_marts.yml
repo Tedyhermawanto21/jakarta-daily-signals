@@ -3,8 +3,8 @@ version: 2
 models:
   - name: fct_daily_signals
     description: >
-      Sinyal harian Jakarta, 1 baris per (date_wib, location_id): kurs USD/IDR (as-of),
-      cuaca, dan PM2.5 harian. Sumber utama dashboard Looker Studio.
+      Daily Jakarta signals, one row per (date_wib, location_id): as-of USD/IDR rate,
+      weather and daily PM2.5.
     data_tests:
       - unique_combination:
           arguments:
@@ -15,10 +15,10 @@ models:
       - name: location_id
         data_tests: [not_null]
       - name: fx_is_carried_forward
-        description: True jika tidak ada kurs di tanggal ini (akhir pekan/libur ECB) dan kurs diambil dari hari kerja sebelumnya.
+        description: True when no rate was published on this date and the previous business day's rate is used.
         data_tests: [not_null]
       - name: aq_is_complete
-        description: True jika 24 jam aktual tersedia. Hanya hari lengkap yang dinilai anomali.
+        description: True when all 24 actual hours exist. Only complete days are judged for anomalies.
         data_tests: [not_null]
       - name: pm25_category_ispu
         data_tests:
@@ -27,7 +27,7 @@ models:
                 values: ["Baik", "Sedang", "Tidak Sehat", "Sangat Tidak Sehat", "Berbahaya"]
 
   - name: fct_anomalies
-    description: 1 baris per anomali. Dibaca alert Telegram (Tahap 8), di-dedup lewat ops.alert_log.
+    description: One row per anomaly. Read by the Telegram summary, deduplicated via ops.alert_log.
     data_tests:
       - unique_combination:
           arguments:
@@ -46,15 +46,15 @@ models:
 
   - name: dash_daily_signals
     description: >
-      Sumber dashboard (pertanyaan 1, 2, 4): 1 baris per hari AKTUAL per lokasi, dengan penanda
-      anomali 0/1 dari fct_anomalies. Dibaca Looker Studio lewat user looker_reader.
+      Dashboard source: one row per actual day and location, with 0/1 anomaly flags from
+      fct_anomalies. Read by Looker Studio as looker_reader.
     data_tests:
       - unique_combination:
           arguments:
             columns: [date_wib, location_id]
     columns:
       - name: fx_pct_change_day
-        description: Perubahan % kurs hanya di hari kurs terbit; null di akhir pekan/libur ECB.
+        description: FX % change on publication days only; null on weekends and ECB holidays.
       - name: fx_anomaly_flag
         data_tests:
           - not_null
@@ -71,7 +71,7 @@ models:
                 quote: false
 
   - name: dash_air_quality_hourly
-    description: "Sumber dashboard (pertanyaan 3): PM2.5 per jam WIB, hanya jam aktual."
+    description: Dashboard source for hourly PM2.5 in WIB, actual hours only.
     data_tests:
       - unique_combination:
           arguments:
@@ -85,8 +85,8 @@ models:
 
   - name: dash_latest_summary
     description: >
-      Sumber scorecard dashboard (pertanyaan 5): 1 baris per lokasi untuk hari aktual terakhir,
-      status anomali, dan prakiraan hari berikutnya.
+      Dashboard scorecards: one row per location for the last actual day, its anomaly status,
+      and the next day's forecast.
     columns:
       - name: location_id
         data_tests: [unique, not_null]
@@ -96,11 +96,11 @@ models:
         data_tests: [not_null]
 
 unit_tests:
-  # Data asli 90 hari belum pernah memicu kurs > 1%, jadi aturan dibuktikan dengan data buatan.
+  # 90 days of real data never moved FX by more than 1%, so the rule is proven on fixtures.
   - name: anomaly_rules_thresholds_and_complete_days
     description: >
-      Kurs: |perubahan| harus LEBIH DARI 1% (tepat 1.00 tidak). PM2.5: rata-rata harus
-      LEBIH DARI 55 dan hanya untuk hari lengkap.
+      FX: |change| must be greater than 1% (exactly 1.00 is not). PM2.5: the daily mean must be
+      greater than 55, on complete days only.
     model: fct_anomalies
     given:
       - input: ref('int_fx_daily_change')
@@ -122,8 +122,8 @@ unit_tests:
 
   - name: dash_flags_count_weekend_fx_once
     description: >
-      Kurs akhir pekan adalah kurs Jumat yang diteruskan: perubahan % dan penanda anomali kurs
-      hanya muncul di hari kurs terbit. Hari prakiraan tidak ikut.
+      Weekend rates are carried forward from Friday, so the % change and FX flag appear only on
+      the publication day. Forecast days are excluded.
     model: dash_daily_signals
     given:
       - input: ref('fct_daily_signals')

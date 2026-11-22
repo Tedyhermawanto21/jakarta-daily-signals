@@ -19,7 +19,7 @@ def test_mask_url_without_password_unchanged():
 
 def test_missing_database_url_raises(monkeypatch):
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    with pytest.raises(ConfigError, match="kosong"):
+    with pytest.raises(ConfigError, match="is empty"):
         get_database_url(load_env=False)
 
 
@@ -57,7 +57,7 @@ def test_expected_host_rejects_dev_url_in_production(monkeypatch):
         "postgresql://u:p@ep-dev-999.c-3.ap-southeast-1.aws.neon.tech/jds?sslmode=require",
     )
     monkeypatch.setenv("EXPECTED_DB_HOST", "ep-prod-123")
-    with pytest.raises(ConfigError, match="bukan EXPECTED_DB_HOST"):
+    with pytest.raises(ConfigError, match="not EXPECTED_DB_HOST"):
         get_database_url(load_env=False)
 
 
@@ -67,5 +67,5 @@ def test_expected_host_is_optional_and_ignored_for_other_urls(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", url)
     assert get_database_url(load_env=False) == url
     monkeypatch.setenv("EXPECTED_DB_HOST", "ep-prod-123")
-    monkeypatch.setenv("LOOKER_READER_URL", url)  # cek host hanya untuk DATABASE_URL
+    monkeypatch.setenv("LOOKER_READER_URL", url)  # host check applies to DATABASE_URL only
     assert get_database_url(load_env=False, env_name="LOOKER_READER_URL") == url

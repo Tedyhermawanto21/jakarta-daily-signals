@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: stg_fx_rates
-    description: Kurs harian, 1 baris per (rate_date, pair).
+    description: Daily FX rates, one row per (rate_date, pair).
     data_tests:
       - unique_combination:
           arguments:
@@ -13,14 +13,14 @@ models:
       - name: pair
         data_tests: [not_null]
       - name: rate
-        description: Jumlah quote per 1 base (mis. IDR per 1 USD).
+        description: Quote units per 1 base unit (e.g. IDR per USD).
         data_tests:
           - not_null
           - accepted_range:
               arguments: { min_value: 10000, max_value: 30000 } # sanity check USD/IDR
 
   - name: stg_weather_daily
-    description: Cuaca harian per lokasi, tanggal WIB.
+    description: Daily weather per location, WIB dates.
     data_tests:
       - unique_combination:
           arguments:
@@ -51,7 +51,7 @@ models:
               arguments: { min_value: 0, max_value: 100 }
 
   - name: stg_air_quality_hourly
-    description: Kualitas udara per jam per lokasi, waktu WIB.
+    description: Hourly air quality per location, WIB times.
     data_tests:
       - unique_combination:
           arguments:
@@ -67,7 +67,7 @@ models:
           - accepted_range:
               arguments: { min_value: 0, max_value: 23 }
       - name: pm25
-        description: PM2.5 µg/m³. Boleh null di jam prakiraan; jam aktual dites di singular test.
+        description: PM2.5 in µg/m³. May be null for forecast hours; actual hours are tested separately.
         data_tests:
           - accepted_range:
               arguments: { min_value: 0, max_value: 1000 }

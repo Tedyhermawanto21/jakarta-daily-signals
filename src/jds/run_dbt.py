@@ -1,17 +1,11 @@
-"""Jalankan dbt dengan kredensial dari DATABASE_URL (satu sumber kredensial).
+"""Run dbt with credentials taken from DATABASE_URL, the single credential source.
 
     uv run python -m jds.run_dbt build
     uv run python -m jds.run_dbt source freshness
     uv run python -m jds.run_dbt test --select stg_fx_rates
 
-dbt tidak membaca .env dan tidak bisa mem-parse URL Postgres. Wrapper ini:
-1. memuat .env (lokal) / memakai env yang sudah ada (CI),
-2. memecah DATABASE_URL menjadi env DBT_PG_* yang dibaca transform/profiles.yml,
-3. membangunkan Neon (retry cold start),
-4. menjalankan dbt lewat API programatik dbtRunner dengan --project-dir/--profiles-dir transform.
-
-CI: env DBT_SCHEMA_PREFIX=ci_pr_<n> membuat dbt menulis ke ci_pr_<n>_staging/_marts
-(divalidasi di sini; dibersihkan dengan `python -m jds.ci_schemas drop`).
+Splits DATABASE_URL into the DBT_PG_* variables read by transform/profiles.yml, wakes Neon,
+then runs dbtRunner. With DBT_SCHEMA_PREFIX=ci_pr_<n>, models go to ci_pr_<n>_* schemas.
 """
 
 from __future__ import annotations
@@ -33,7 +27,7 @@ DBT_DIR = Path(__file__).resolve().parents[2] / "transform"
 
 
 def dbt_env_from_url(url: str) -> dict[str, str]:
-    """postgresql://user:pass@host:port/db?sslmode=require -> env DBT_PG_*."""
+    """postgresql://user:pass@host:port/db?sslmode=require -> DBT_PG_* variables."""
     parts = urlsplit(url)
     query = parse_qs(parts.query)
     return {
@@ -59,13 +53,13 @@ def main(argv: list[str] | None = None) -> int:
     setup_logging()
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
-        log.error("Berikan perintah dbt, mis.: python -m jds.run_dbt build")
+        log.error("Pass a dbt command, e.g. python -m jds.run_dbt build")
         return 2
 
     try:
         prefix = os.environ.get(PREFIX_ENV, "").strip()
         if prefix:
-            validate_prefix(prefix)  # cegah nama schema aneh sebelum dbt menulis apa pun
+            validate_prefix(prefix)
         url = get_database_url()
     except ConfigError as exc:
         log.error("%s", exc)
@@ -74,10 +68,10 @@ def main(argv: list[str] | None = None) -> int:
     os.environ.update(dbt_env_from_url(url))
     log.info("dbt -> %s", mask_url(url))
     if prefix:
-        log.info("Schema CI: %s_staging, %s_marts (source raw tetap)", prefix, prefix)
-    connect(url).close()  # bangunkan Neon sebelum dbt membuka banyak koneksi
+        log.info("CI schemas: %s_staging, %s_marts (raw source unchanged)", prefix, prefix)
+    connect(url).close()
 
-    from dbt.cli.main import dbtRunner  # import lambat: dbt berat untuk diimpor
+    from dbt.cli.main import dbtRunner
 
     result = dbtRunner().invoke(with_dirs(args))
     if result.exception is not None:

@@ -1,29 +1,23 @@
--- Hak akses read-only untuk Looker Studio (Tahap 11). Aman dijalankan ulang.
+-- Read-only access for Looker Studio. Safe to re-run.
+-- Run in the Neon SQL Editor on the production branch, database jds, as the table owner.
 --
--- Jalankan di Neon SQL Editor: branch production, database jds, sebagai pemilik tabel (jds_owner).
+-- Create the role with SQL first, not from the Neon Console Roles page: Console roles join
+-- neon_superuser. Choose your own password; it never goes into the repo.
 --
--- PRASYARAT: role looker_reader dibuat lewat SQL, BUKAN lewat menu Roles di Neon Console.
--- Role dari Console otomatis menjadi anggota neon_superuser (bisa baca/tulis semua data).
--- Password tidak pernah ditulis di repo; buat sendiri lalu jalankan SEKALI di SQL Editor:
+--     create role looker_reader with login password '<strong-password>';
 --
---     create role looker_reader with login password '<password-kuat-kamu>';
---
--- Cek setelahnya: uv run python -m jds.check_reader (dengan LOOKER_READER_URL di .env).
+-- Verify afterwards with: uv run python -m jds.check_reader
 
--- 1. Pastikan tidak ada hak di schema selain marts.
 revoke all on schema raw, staging, ops from looker_reader;
 revoke all on all tables in schema raw, staging, ops from looker_reader;
 revoke create on schema public from looker_reader;
 
--- 2. Hanya boleh membaca schema marts.
 grant usage on schema marts to looker_reader;
 grant select on all tables in schema marts to looker_reader;
 
--- 3. dbt membuat ULANG tabel marts setiap run; grant pada tabel lama ikut hilang.
---    Default privileges membuat tabel baru milik jds_owner otomatis bisa dibaca.
+-- dbt recreates mart tables on every run, which drops grants on the old tables.
 alter default privileges for role jds_owner in schema marts
 grant select on tables to looker_reader;
 
--- 4. Lapisan pengaman tambahan (yang utama tetap grant di atas).
 alter role looker_reader set default_transaction_read_only = on;
 alter role looker_reader set statement_timeout = '30s';

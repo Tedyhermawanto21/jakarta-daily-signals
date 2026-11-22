@@ -1,10 +1,7 @@
-"""Cek koneksi ke Neon Postgres dan keberadaan schema proyek.
+"""Check the Neon Postgres connection and the project schemas.
 
-Pemakaian:
-    uv run python -m jds.check_db           # cek saja
-    uv run python -m jds.check_db --init    # buat schema yang belum ada, lalu cek
-
-Aman dijalankan berulang kali: --init memakai CREATE SCHEMA IF NOT EXISTS.
+uv run python -m jds.check_db           # check only
+uv run python -m jds.check_db --init    # create missing schemas, then check
 """
 
 from __future__ import annotations
@@ -28,12 +25,11 @@ from jds.logging_setup import setup_logging
 
 log = logging.getLogger("jds.check_db")
 
-# Error yang tidak akan sembuh dengan dicoba ulang (salah password, DB/role tidak ada).
 _PERMANENT_ERRORS = ("password authentication failed", "does not exist", "invalid dsn")
 
 
 def _is_transient(exc: BaseException) -> bool:
-    """Retry hanya untuk error sementara, mis. compute Neon sedang bangun (cold start)."""
+    """Retry only temporary errors, e.g. a Neon compute waking up from a cold start."""
     if not isinstance(exc, psycopg2.OperationalError):
         return False
     msg = str(exc).lower()
@@ -58,21 +54,21 @@ def run(init: bool) -> int:
         log.error("%s", exc)
         return 2
 
-    log.info("Menghubungkan ke %s", mask_url(url))
+    log.info("Connecting to %s", mask_url(url))
     try:
         conn = connect(url)
     except psycopg2.OperationalError as exc:
-        log.error("Gagal terhubung: %s", str(exc).strip())
+        log.error("Connection failed: %s", str(exc).strip())
         return 1
 
     try:
-        with conn, conn.cursor() as cur:  # `with conn` = commit jika sukses, rollback jika error
+        with conn, conn.cursor() as cur:
             if init:
                 for schema in SCHEMAS:
                     cur.execute(
                         sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(schema))
                     )
-                log.info("--init: CREATE SCHEMA IF NOT EXISTS untuk %s", ", ".join(SCHEMAS))
+                log.info("--init: CREATE SCHEMA IF NOT EXISTS for %s", ", ".join(SCHEMAS))
 
             cur.execute("SELECT version(), current_database(), current_user")
             version, database, user = cur.fetchone()
@@ -87,20 +83,20 @@ def run(init: bool) -> int:
 
     log.info("Postgres : %s", version.split(",")[0])
     log.info("Database : %s (user: %s)", database, user)
-    log.info("Schema   : %s", ", ".join(found) or "(tidak ada)")
+    log.info("Schemas  : %s", ", ".join(found) or "(none)")
 
     missing = sorted(set(SCHEMAS) - set(found))
     if missing:
-        log.error("Schema belum ada: %s. Jalankan ulang dengan --init.", ", ".join(missing))
+        log.error("Missing schemas: %s. Run again with --init.", ", ".join(missing))
         return 1
-    log.info("LULUS: koneksi OK dan %d schema tersedia.", len(SCHEMAS))
+    log.info("OK: connected and all %d schemas exist.", len(SCHEMAS))
     return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     setup_logging()
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--init", action="store_true", help="buat schema yang belum ada")
+    parser.add_argument("--init", action="store_true", help="create missing schemas")
     args = parser.parse_args(argv)
     return run(init=args.init)
 

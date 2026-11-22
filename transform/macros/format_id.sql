@@ -1,6 +1,6 @@
-{#- Format angka & tanggal gaya Indonesia di SQL, sama dengan jds.alerts.rules. -#}
+{#- Indonesian number and date formats, matching jds.alerts.rules. -#}
 
-{#- 18263.5 -> '18.263,5' (pola to_char memakai ',' ribuan dan '.' desimal, lalu ditukar) -#}
+{#- 18263.5 -> '18.263,5' -#}
 {% macro fmt_num_id(expr, pattern='FM999,999,990.0') -%}
     translate(to_char({{ expr }}, '{{ pattern }}'), ',.', '.,')
 {%- endmacro %}

@@ -1,4 +1,4 @@
-"""Aturan retry di jds.http.get_json, tanpa jaringan (Session.get di-mock)."""
+"""Retry rules of jds.http.get_json, with Session.get mocked."""
 
 import json
 
@@ -19,7 +19,7 @@ def make_response(status: int, body: dict | None = None) -> requests.Response:
 
 
 class FakeGet:
-    """Mengembalikan hasil berurutan (Response atau Exception) dan menghitung panggilan."""
+    """Returns queued outcomes (Response or Exception) and counts calls."""
 
     def __init__(self, *outcomes):
         self.outcomes = list(outcomes)
@@ -35,7 +35,7 @@ class FakeGet:
 
 @pytest.fixture(autouse=True)
 def no_wait(monkeypatch):
-    """Matikan jeda backoff supaya test cepat; logika retry tetap sama."""
+    """Disable backoff sleeps; the retry logic itself is unchanged."""
     monkeypatch.setattr(get_json.retry, "wait", wait_none())
     monkeypatch.setattr(get_json.retry, "sleep", lambda _seconds: None)
 

@@ -1,16 +1,11 @@
-"""Buktikan user Looker Studio benar-benar read-only (Tahap 11).
+"""Prove that the Looker Studio user is read-only.
 
     uv run python -m jds.check_reader
 
-Membaca LOOKER_READER_URL dari .env (koneksi sebagai looker_reader, BUKAN pemilik).
-Yang diharapkan:
-- SELECT di schema marts berhasil,
-- SELECT di schema raw ditolak,
-- lapisan 1 (setting role): INSERT biasa ditolak karena transaksi read-only (SQLSTATE 25006),
-- lapisan 2 (GRANT): INSERT/CREATE tetap ditolak walau transaksi DIPAKSA `read write`
-  (SQLSTATE 42501). Setting sesi bisa dimatikan siapa saja; yang benar-benar mengunci
-  adalah GRANT. Setiap cek di-rollback, jadi tidak ada perubahan yang tersisa.
-Exit 0 jika semua sesuai harapan, 1 jika ada yang tidak sesuai, 2 jika konfigurasi salah.
+Connects with LOOKER_READER_URL. SELECT on marts must work; raw and staging must be denied.
+Writes must be denied twice: by the read-only setting (SQLSTATE 25006) and, with the
+transaction forced to READ WRITE, by the grants themselves (42501). Every check is rolled back.
+Exit code 0 = all as expected, 1 = something is not, 2 = configuration error.
 """
 
 from __future__ import annotations
@@ -35,12 +30,12 @@ class Check:
     name: str
     sql: str
     should_succeed: bool
-    force_read_write: bool = False  # True = lewati lapisan 1, uji GRANT saja
-    expect_code: str = ""  # SQLSTATE penolakan yang diharapkan (42501 = permission denied)
+    force_read_write: bool = False
+    expect_code: str = ""
 
 
-DENIED = "42501"  # insufficient_privilege
-READ_ONLY = "25006"  # read_only_sql_transaction
+DENIED = "42501"
+READ_ONLY = "25006"
 INSERT_SQL = "insert into marts.dash_latest_summary (location_id) values ('__check__')"
 
 CHECKS: tuple[Check, ...] = (
@@ -55,35 +50,39 @@ CHECKS: tuple[Check, ...] = (
         False,
         expect_code=DENIED,
     ),
-    Check("INSERT marts (lapisan 1: read-only)", INSERT_SQL, False, expect_code=READ_ONLY),
-    Check("INSERT marts (lapisan 2: GRANT)", INSERT_SQL, False, True, DENIED),
+    Check("INSERT marts (layer 1: read-only)", INSERT_SQL, False, expect_code=READ_ONLY),
+    Check("INSERT marts (layer 2: grants)", INSERT_SQL, False, True, DENIED),
     Check(
-        "CREATE TABLE marts (GRANT)", "create table marts.__check__ (id int)", False, True, DENIED
+        "CREATE TABLE marts (grants)", "create table marts.__check__ (id int)", False, True, DENIED
     ),
     Check(
-        "CREATE TABLE public (GRANT)", "create table public.__check__ (id int)", False, True, DENIED
+        "CREATE TABLE public (grants)",
+        "create table public.__check__ (id int)",
+        False,
+        True,
+        DENIED,
     ),
 )
 
 
 def run_check(conn, check: Check) -> tuple[bool, str]:
-    """Jalankan satu cek; selalu rollback supaya tidak ada perubahan yang tersisa."""
+    """Run one check and always roll back."""
     try:
         with conn.cursor() as cur:
             if check.force_read_write:
-                cur.execute("set transaction read write")  # harus perintah pertama di transaksi
+                cur.execute("set transaction read write")  # must be the first statement
             cur.execute(check.sql)
-            detail = f"berhasil ({cur.fetchone()[0]} baris)" if cur.description else "berhasil"
+            detail = f"succeeded ({cur.fetchone()[0]} rows)" if cur.description else "succeeded"
         succeeded = True
     except psycopg2.Error as exc:
         succeeded = False
         code = exc.pgcode or ""
-        detail = f"ditolak: {code} {(exc.pgerror or '').strip().splitlines()[0]}"
+        detail = f"denied: {code} {(exc.pgerror or '').strip().splitlines()[0]}"
     finally:
         conn.rollback()
     if succeeded or check.should_succeed:
         return succeeded == check.should_succeed, detail
-    # Ditolak sesuai harapan, tapi harus oleh lapisan yang benar.
+    # Denied as expected, but it must be denied by the right layer.
     return (not check.expect_code or code == check.expect_code), detail
 
 
@@ -95,7 +94,7 @@ def main() -> int:
         log.error("%s", exc)
         return 2
 
-    log.info("Koneksi sebagai: %s", mask_url(url))
+    log.info("Connecting as: %s", mask_url(url))
     conn = connect(url)
     try:
         with conn.cursor() as cur:
@@ -107,11 +106,11 @@ def main() -> int:
         failures = 0
         for check in CHECKS:
             ok, detail = run_check(conn, check)
-            expected = "boleh" if check.should_succeed else "harus ditolak"
+            expected = "allowed" if check.should_succeed else "must be denied"
             log.log(
                 logging.INFO if ok else logging.ERROR,
-                "%s %-42s (%s) -> %s",
-                "OK  " if ok else "GAGAL",
+                "%s %-40s (%s) -> %s",
+                "OK  " if ok else "FAIL",
                 check.name,
                 expected,
                 detail,
@@ -121,9 +120,9 @@ def main() -> int:
         conn.close()
 
     if failures:
-        log.error("%d cek tidak sesuai harapan: user ini BUKAN read-only yang aman.", failures)
+        log.error("%d checks did not match: this user is NOT safely read-only.", failures)
         return 1
-    log.info("Semua %d cek lulus: user hanya bisa membaca schema marts.", len(CHECKS))
+    log.info("All %d checks passed: the user can only read the marts schema.", len(CHECKS))
     return 0
 
 

@@ -1,72 +1,78 @@
-# Jakarta Daily Signals — Rencana Proyek
+# Jakarta Daily Signals: Project Plan
 
-> Status: **Tahap 0–12 selesai** (2026-11-22). Tinggal DoD #1: cron 7 hari berturut-turut (mulai 2026-11-22). Disusun 2026-11-21.
-> **Revisi 2026-11-21:** gudang data diganti dari BigQuery ke **Neon (Postgres serverless, gratis tanpa kartu)** karena billing account Google Cloud tidak bisa diaktifkan. Dashboard tetap **Looker Studio** (gratis), tersambung lewat konektor PostgreSQL.
+> Status: **stages 0–12 done** (2026-11-22). Remaining Definition of Done item: seven consecutive
+> scheduled runs (counting from 2026-11-22). Written 2026-11-21.
+> **Revision 2026-11-21:** the warehouse moved from BigQuery to **Neon (serverless Postgres, free,
+> no card)** because the Google Cloud billing account could not be activated. The dashboard stays
+> on **Looker Studio** (free) through its PostgreSQL connector.
 
 ---
 
-## 1. Project Brief
+## 1. Project brief
 
-### Masalah
-Informasi harian yang relevan untuk warga dan pekerja di Jakarta tersebar di banyak tempat. Kurs USD/IDR ada di satu situs, cuaca di situs lain, dan kualitas udara di aplikasi lain lagi. Semua sumber itu juga tidak memberi tahu kalau ada hal yang **tidak biasa**, misalnya rupiah melemah tajam atau udara masuk kategori tidak sehat. Akibatnya orang harus mengecek sendiri setiap hari, atau baru tahu setelah terlambat.
+### Problem
+Daily information that matters to people living and working in Jakarta is scattered: the USD/IDR
+rate on one site, the weather on another, air quality in yet another app. None of them say when
+something is **unusual**, such as a sharp rupiah move or unhealthy air, so people either check
+every day or find out too late.
 
-### Pengguna
-| Persona | Kebutuhan |
+### Users
+| Persona | Need |
 |---|---|
-| Pekerja komuter Jakarta | Tahu apakah hari ini perlu masker atau payung |
-| Pelaku UMKM impor / freelancer berpenghasilan USD | Tahu kalau kurs bergerak tajam |
-| (Portofolio) Rekruter / hiring manager | Melihat pipeline end-to-end yang andal, teruji, dan murah |
+| Jakarta commuter | Whether today calls for a mask or an umbrella |
+| Importer, small business owner or freelancer paid in USD | Whether the exchange rate moved sharply |
+| (Portfolio) recruiter or hiring manager | A reliable, tested, low-cost end-to-end pipeline |
 
-### Pertanyaan yang dijawab dashboard
-1. Bagaimana tren kurs USD/IDR 30/90 hari terakhir, dan di hari apa saja perubahannya melebihi 1%?
-2. Berapa rata-rata PM2.5 harian, dan berapa hari per bulan nilainya di atas 55 µg/m³?
-3. Pada jam berapa PM2.5 biasanya paling buruk? (pola per jam, WIB)
-4. Apakah hari hujan atau berangin cenderung punya PM2.5 lebih rendah? (curah hujan & kecepatan angin vs PM2.5)
-5. Bagaimana ringkasan "hari ini/kemarin": kurs, suhu min/max, hujan, PM2.5, dan status peringatan?
+### Questions the dashboard answers
+1. What is the USD/IDR trend over the last 30/90 days, and on which days did it move more than 1%?
+2. What is the average daily PM2.5, and how many days per month are above 55 µg/m³?
+3. At what hour of the day is PM2.5 usually worst (WIB)?
+4. Do rainy or windy days tend to have lower PM2.5?
+5. What does today and yesterday look like: rate, min/max temperature, rain, PM2.5, alert status?
 
-### Definisi selesai (Definition of Done)
-- [ ] Workflow GitHub Actions terjadwal berjalan otomatis setiap hari selama **≥ 7 hari berturut-turut** tanpa intervensi.
-- [x] Data mentah dan mart ada di **Neon Postgres**. **Menjalankan ulang untuk tanggal yang sama tidak menambah baris** (terbukti lewat query hitung baris).
-- [x] `dbt build` lulus, dengan test `unique`, `not_null`, `accepted_range`, dan freshness.
-- [x] Setiap PR menjalankan CI (lint + `dbt build` di schema CI terpisah). PR yang merusak test berstatus merah.
-- [x] Telegram mengirim peringatan saat ambang terlampaui, **maksimal 1 kali per anomali per tanggal** walau pipeline dijalankan ulang.
-- [x] Dashboard Looker Studio publik menjawab 5 pertanyaan di atas, memakai user database **read-only**.
-- [x] README berisi diagram arsitektur, cara menjalankan lokal, screenshot dashboard, dan keputusan desain (termasuk alasan pindah dari BigQuery).
-- [x] Tidak ada kredensial di repo. Dicek dengan GitGuardian di setiap PR dan pemindaian lokal terhadap nilai asli `.env`. (Pola generik `git log -p | grep -iE "postgres(ql)?://[^ ]+:[^ ]+@"` memberi *false positive* pada contoh format dan data uji palsu, seperti `<password>` dan `p%40ss`.)
+### Definition of Done
+- [ ] The scheduled GitHub Actions workflow runs on its own every day for **at least 7 consecutive days**.
+- [x] Raw data and marts live in **Neon Postgres**. **Re-running the same dates adds no rows** (proven by row counts).
+- [x] `dbt build` passes, with `unique`, `not_null`, `accepted_range` and freshness checks.
+- [x] Every PR runs CI (lint plus `dbt build` in a separate CI schema). A PR that breaks a test turns red.
+- [x] Telegram reports threshold breaches **at most once per anomaly and date**, even when the pipeline is re-run.
+- [x] A public Looker Studio dashboard answers the five questions using a **read-only** database user.
+- [x] The README has an architecture diagram, local setup, a dashboard screenshot and the design decisions (including why the project left BigQuery).
+- [x] No credentials in the repo. Checked by GitGuardian on every PR and by a local scan against the real `.env` values. (The generic pattern `git log -p | grep -iE "postgres(ql)?://[^ ]+:[^ ]+@"` gives false positives on format examples and fake test values such as `<password>` and `p%40ss`.)
 
 ---
 
-## 2. Arsitektur
+## 2. Architecture
 
 ```mermaid
 flowchart LR
-    subgraph SRC[Sumber Data - publik, tanpa API key]
-        FX[Frankfurter API<br/>kurs USD/IDR]
+    subgraph SRC[Public sources, no API key]
+        FX[Frankfurter API<br/>USD/IDR]
         WX[Open-Meteo<br/>Weather API]
         AQ[Open-Meteo<br/>Air Quality API]
     end
 
     subgraph GHA[GitHub Actions]
-        CRON[Jadwal harian<br/>cron UTC = 07:17 WIB]
+        CRON[Daily schedule<br/>07:17 WIB]
         DISPATCH[workflow_dispatch<br/>manual / backfill]
-        CI[CI di setiap PR]
+        CI[CI on every PR]
     end
 
-    subgraph PY[Job Python - uv]
-        DLT[dlt pipeline<br/>write_disposition=merge<br/>primary_key per tanggal]
-        ALERT[Alert checker<br/>+ dedup]
+    subgraph PY[Python job, uv]
+        DLT[dlt pipeline<br/>write_disposition=merge<br/>primary key per date]
+        ALERT[Alert check<br/>+ dedup]
     end
 
-    subgraph NEON[Neon Postgres - region Singapura]
-        RAW[(schema raw<br/>fx_rates, weather_daily,<br/>air_quality_hourly)]
-        STG[(schema staging<br/>views dbt)]
-        MART[(schema marts<br/>fct_daily_signals,<br/>fct_anomalies)]
-        LOG[(schema ops<br/>alert_log)]
+    subgraph NEON[Neon Postgres, Singapore]
+        RAW[(raw<br/>fx_rates, weather_daily,<br/>air_quality_hourly)]
+        STG[(staging<br/>dbt views)]
+        MART[(marts<br/>fct_*, dash_*)]
+        LOG[(ops<br/>alert_log)]
     end
 
     DBT[dbt Core<br/>dbt build]
-    LS[Looker Studio<br/>dashboard publik]
-    TG[Telegram Bot<br/>peringatan]
+    LS[Looker Studio<br/>public dashboard]
+    TG[Telegram bot]
     SECRET[[GitHub Secrets<br/>DATABASE_URL, TELEGRAM_*]]
 
     CRON --> DLT
@@ -83,169 +89,137 @@ flowchart LR
     MART --> ALERT
     ALERT --> LOG
     ALERT --> TG
-    MART -->|user read-only| LS
-    CI -->|dbt build target=ci| DBT
+    MART -->|read-only user| LS
+    CI -->|dbt build in ci_pr_n| DBT
 ```
 
-Urutan satu kali jalan harian: **ingest (dlt) → transform + test (dbt build) → cek anomali → kirim Telegram (jika belum pernah dikirim) → catat di alert_log**. Kalau satu langkah gagal, langkah berikutnya tidak jalan. Dengan begitu tidak ada peringatan yang dikirim dari data yang belum lolos test.
+One daily run: **ingest (dlt) → transform and test (dbt build) → check anomalies → send to
+Telegram if not sent yet → record in alert_log**. If a step fails, later steps do not run, so no
+alert is ever sent from data that failed its tests.
 
-### Kenapa pola cloud / serverless batch terjadwal cocok
-- **Datanya memang harian.** Kurs ECB terbit sekali per hari kerja, dan ringkasan cuaca/udara bersifat harian. Streaming atau server yang menyala 24/7 hanya membuang biaya.
-- **Tidak ada server yang perlu dirawat.** Runner GitHub Actions dibuat untuk satu kali jalan lalu dibuang. Neon juga serverless: compute tidur saat tidak dipakai dan bangun otomatis saat ada koneksi.
-- **Biaya Rp0, tanpa kartu.** Volumenya sekitar 30 baris/hari, jauh di bawah kuota gratis semua layanan.
-- **Mudah dijalankan ulang.** Batch per tanggal + merge membuat rerun dan backfill aman. Ini sulit dicapai di pola streaming.
-- **Kode dan orkestrasi di satu repo.** Bagus untuk portofolio karena rekruter bisa melihat semuanya, termasuk riwayat run.
+### Why a scheduled serverless batch fits
+- **The data is daily.** The ECB publishes once per business day, and weather and air quality are
+  summarized per day. Streaming or an always-on server would only add cost.
+- **No servers to maintain.** GitHub Actions runners are created per run and thrown away. Neon is
+  serverless too: the compute sleeps when idle and wakes on connection.
+- **Zero cost, no card.** Around 30 rows per day, far below every free tier.
+- **Easy to re-run.** Per-date batches plus merge make reruns and backfills safe.
+- **Code and orchestration in one repo.** Recruiters can see everything, including run history.
 
-Batasan pola ini: latensi baru terasa setelah jadwal berikutnya (≤ 24 jam), dan jadwal GitHub bisa terlambat. Untuk ringkasan harian, itu bisa diterima.
+Trade-off: data is at most 24 hours old, and GitHub schedules can be delayed. Fine for a daily summary.
 
 ---
 
-## 3. Evaluasi Stack
+## 3. Stack review
 
-| Komponen | Kenapa dipilih | Alternatif | Berlebihan? |
+| Component | Why | Alternative | Overkill? |
 |---|---|---|---|
-| **dlt** (ingestion) | Merge/primary key, evolusi skema, state incremental, dan loader Postgres sudah tersedia. Bisa uji lokal ke DuckDB tanpa akun apa pun. | `requests` + `psycopg` manual | Sedikit, untuk 3 API sederhana. Tapi dlt menghemat banyak kode idempotensi, dan "pernah pakai dlt" punya nilai jual. **Tetap.** |
-| **Neon Postgres** (storage) | Gratis tanpa kartu, serverless, Postgres standar (dlt, dbt, dan Looker Studio semuanya mendukung). Punya fitur **branching** (salinan database untuk dev/CI). | BigQuery (butuh billing aktif), Supabase (Postgres juga), MotherDuck (tanpa konektor Looker Studio) | Tidak. Postgres bukan gudang data kolumnar, tapi untuk ±30 baris/hari itu tidak relevan. |
-| **dbt Core** (transformasi) | Lineage, test data, dokumentasi, dan modularitas SQL. Standar industri. | SQL view biasa di Postgres | Untuk ±6 model memang agak berat, tapi justru itu yang mau dipamerkan. **Tetap.** Jangan tambah paket dbt yang tidak perlu. |
-| **GitHub Actions** (orkestrasi + CI) | Gratis, cron + CI dalam satu tempat, riwayat run publik. | Cron di VPS | Tidak. Airflow **yang** berlebihan di sini. |
-| **Looker Studio** (dashboard) | Gratis, drag & drop, konektor PostgreSQL bawaan, mudah dibagikan publik. | Streamlit Community Cloud / Evidence | Tidak. |
-| **Telegram Bot** (alert) | Gratis, API HTTP sederhana, langsung masuk ke HP. | Email via SMTP / Discord webhook | Tidak. |
+| **dlt** (ingestion) | Merge on primary keys, schema evolution and a Postgres loader out of the box; testable locally against DuckDB without any account. | `requests` + `psycopg` by hand | Slightly, for three simple APIs, but it saves a lot of idempotency code. **Kept.** |
+| **Neon Postgres** (storage) | Free without a card, serverless, standard Postgres (supported by dlt, dbt and Looker Studio), with **branching** for dev and CI. | BigQuery (needs billing), Supabase, MotherDuck (no Looker Studio connector) | No. Not columnar, but irrelevant at ~30 rows per day. |
+| **dbt Core** (transformation) | Lineage, data tests, docs and modular SQL. Industry standard. | Plain Postgres views | A bit heavy for ~6 models, but that is what the project demonstrates. **Kept**, without extra packages. |
+| **GitHub Actions** (orchestration + CI) | Free, cron and CI in one place, public run history. | Cron on a VPS | No. Airflow would be the overkill here. |
+| **Looker Studio** (dashboard) | Free, drag and drop, built-in PostgreSQL connector, easy public sharing. | Streamlit Community Cloud, Evidence | No. |
+| **Telegram bot** (alerts) | Free, simple HTTP API, lands on the phone. | SMTP email, Discord webhook | No. |
 
-**Catatan portabilitas (untuk README):** semua SQL ditulis di dbt dan semua load lewat dlt. Pindah ke BigQuery nanti cukup dengan mengganti destination dlt (`postgres` → `bigquery`) dan adapter dbt (`dbt-postgres` → `dbt-bigquery`), plus sedikit penyesuaian dialek SQL.
+**Portability:** all SQL lives in dbt and all loading goes through dlt. Moving to BigQuery means
+switching the dlt destination and the dbt adapter, plus some dialect changes (listed in the README).
 
-### Versi paket (kandidat, dikunci di Tahap 0)
-| Paket | Versi target | Catatan kecocokan |
-|---|---|---|
-| Python | 3.11.x | Didukung dlt 1.x & dbt 1.x |
-| `dlt[postgres,duckdb]` | `>=1.x,<2` (minor terbaru yang lolos `uv lock`) | `duckdb` untuk uji lokal Tahap 2–4 |
-| `dbt-core` | minor terbaru yang stabil | |
-| `dbt-postgres` | samakan minor dengan dbt-core | |
-| `requests` | `>=2.32,<3` | |
-| `tenacity` | `>=9,<10` | retry + backoff |
-| `python-dotenv` | `>=1,<2` | baca `.env` lokal |
-| `pytest` (dev) | `>=8,<9` | |
-| `ruff`, `sqlfluff` (dev) | terbaru stabil | lint Python & SQL di CI |
-
-Versi persisnya **tidak ditebak**. Di Tahap 0 kita jalankan `uv lock` + `uv sync`, lalu versi hasil resolve dicatat di `uv.lock` dan README. Kalau ada konflik dependensi antara dlt dan dbt, akan langsung terlihat di langkah itu.
+### Package versions
+Exact versions are resolved by `uv lock` and recorded in `uv.lock` and the README, not guessed.
+Constraints: Python 3.11, `dlt[duckdb,postgres] >=1.32,<2`, `dbt-core <1.13` with `dbt-postgres <1.12`,
+`requests >=2.32,<3`, `tenacity >=9,<10`, `python-dotenv >=1,<2`; dev: `pytest`, `ruff`, `sqlfluff`.
 
 ---
 
-## 4. Batasan Free Tier & Cara Menyiasatinya
+## 4. Free-tier limits and workarounds
 
-| Layanan | Batasan yang bisa mengganggu | Siasat |
+| Service | Limit that can bite | Workaround |
 |---|---|---|
-| **Neon (Free)** | Kuota storage & jam compute per bulan terbatas (cek angka terbaru di halaman pricing Neon). Compute **tidur otomatis** setelah beberapa menit idle; koneksi pertama butuh waktu bangun (cold start). Koneksi **wajib SSL**. | Volume proyek ini sangat kecil. Retry koneksi di Python & dbt untuk cold start. Selalu pakai `sslmode=require`. |
-| **Neon + Looker Studio** | Looker Studio mengakses database dengan kredensial pemilik, jadi viewer dashboard secara tidak langsung memakai user itu. Beberapa klien tanpa dukungan SNI gagal terhubung ke Neon. | Buat user khusus **`looker_reader`** yang hanya bisa `SELECT` di schema `marts`. Kalau koneksi Looker Studio gagal karena SNI/endpoint, pakai cara di docs Neon (menyertakan endpoint ID di password: `endpoint=<endpoint_id>;<password>`). |
-| **Looker Studio** | Data di-cache (default beberapa jam), dan tidak ada alerting | Atur data freshness serendah mungkin. Alerting ditangani Telegram. Buat mart kecil yang sudah diagregasi supaya query dashboard ringan. |
-| **GitHub Actions** | Cron dalam **UTC**. Jadwal bisa **terlambat / di-skip** saat beban tinggi (terutama di menit :00). Workflow terjadwal **dinonaktifkan otomatis setelah 60 hari tanpa aktivitas repo** (repo publik). | Pakai menit "aneh": `17 0 * * *` = 07:17 WIB. Tambahkan `workflow_dispatch` untuk run manual. Job idempoten, jadi run susulan aman. Repo publik (menit tak terbatas). Commit sesekali. |
-| GitHub Actions (CI) | PR dari fork **tidak menerima secrets** | Lint + `dbt parse` (tanpa kredensial) selalu jalan; `dbt build` ke Neon hanya untuk PR dari repo sendiri |
-| **Frankfurter** | Data dari ECB: **hanya hari kerja Eropa** (tidak ada akhir pekan/libur ECB), terbit ±16:00 CET (≈ 22:00 WIB). Kurs IDR adalah **kurs silang via EUR**, bukan JISDOR Bank Indonesia. | Perubahan % dihitung terhadap **hari kurs sebelumnya yang tersedia**, bukan "kemarin". Tulis sumber dengan jujur di dashboard. |
-| **Open-Meteo** | Gratis untuk non-komersial, ±10.000 call/hari. Air quality adalah **model CAMS (estimasi grid)**, bukan sensor stasiun. ⚠️ Endpoint cuaca `api.open-meteo.com/v1/forecast` hanya menyimpan **±75 hari** ke belakang: tanggal lebih lama tetap HTTP 200 tapi nilainya `null` (ditemukan saat backfill Tahap 6). | Kita hanya butuh ±3–5 call/hari. Retry dengan backoff untuk 429/5xx. Cuaca memakai **Historical Forecast API** (`historical-forecast-api.open-meteo.com`): nilainya identik untuk tanggal yang tumpang tindih, dan juga mencakup hari ini + prakiraan. Log mencatat jumlah hari kosong. Cantumkan "data model" di dashboard. |
-| **Telegram Bot** | Bot **tidak bisa memulai chat**: kamu harus `/start` bot dulu untuk mendapat `chat_id`. Batas ±1 pesan/detik per chat. | Langkah setup terdokumentasi. Satu pesan ringkas per run. |
+| **Neon (Free)** | Monthly storage and compute-hour quotas. The compute **suspends** after a few idle minutes, so the first connection waits (cold start). **SSL required.** | Tiny volume. Connection retries in Python and dbt. Always `sslmode=require`. |
+| **Neon + Looker Studio** | Viewers query through the data source owner's credentials. Some clients without SNI support cannot reach Neon. | A dedicated **`looker_reader`** with `SELECT` on `marts` only. If SNI fails, put the endpoint ID in the password (`endpoint=<endpoint_id>;<password>`). Looker also requires the server CA (ISRG Root X1) when SSL is on. |
+| **Looker Studio** | Cached data, no alerting. | Short data freshness, alerting via Telegram, small pre-aggregated marts. |
+| **GitHub Actions** | Cron runs in **UTC** and can be **late or skipped** under load (especially at :00). Scheduled workflows are **disabled after 60 days without repo activity**. | Odd minute: `17 0 * * *` = 07:17 WIB. `workflow_dispatch` for manual runs. Idempotent jobs. Public repo (unlimited minutes). Commit occasionally. |
+| GitHub Actions (CI) | PRs from forks **get no secrets**. | Lint, pytest and `dbt parse` always run; `dbt build` against Neon only for same-repo PRs. |
+| **Frankfurter** | ECB data: **European business days only**, published around 16:00 CET (≈ 22:00 WIB). IDR is a **cross rate via EUR**, not Bank Indonesia's JISDOR. | % change vs the **previous published rate**, not "yesterday". Say so on the dashboard. |
+| **Open-Meteo** | Free for non-commercial use, ~10,000 calls/day. Air quality is the **CAMS model**, not station sensors. The forecast endpoint `api.open-meteo.com/v1/forecast` keeps only **~75 days**: older dates still return HTTP 200 with `null` values (found during the stage 6 backfill). | 3–5 calls per day. Retries for 429/5xx. Weather uses the **Historical Forecast API**, which returns identical values for overlapping dates and also covers today and the forecast. Missing days are logged. |
+| **Telegram bot** | A bot **cannot start a chat**: send `/start` first to get a `chat_id`. ~1 message/second per chat. | Documented setup. One short message per run. |
 
 ---
 
-## 5. Struktur Folder
+## 5. Repository layout
 
 ```
-serverless-cloud-data/                # repo: jakarta-daily-signals
-├── .github/
-│   └── workflows/
-│       ├── daily.yml                 # cron harian + workflow_dispatch (param: tanggal backfill)
-│       └── ci.yml                    # PR: ruff, pytest, sqlfluff, dbt build --target ci
-├── src/
-│   └── jds/                          # paket Python "jakarta daily signals"
-│       ├── __init__.py
-│       ├── config.py                 # baca env, konstanta (koordinat, TZ Asia/Jakarta, ambang)
-│       ├── logging_setup.py          # konfigurasi logging terpusat
-│       ├── http.py                   # session requests + retry (tenacity)
-│       ├── sources/
-│       │   ├── frankfurter.py        # dlt resource: fx_rates
-│       │   └── open_meteo.py         # dlt resources: weather_daily, air_quality_hourly
-│       ├── pipeline.py               # entrypoint: `uv run python -m jds.pipeline --date ...`
-│       └── alerts/
-│           ├── rules.py              # logika anomali (pure function, mudah diuji)
-│           ├── telegram.py           # kirim pesan
-│           └── run_alerts.py         # baca mart → dedup via ops.alert_log → kirim
-├── transform/                        # proyek dbt
-│   ├── dbt_project.yml
-│   ├── profiles.yml                  # semua nilai via env_var(), tanpa rahasia
-│   ├── packages.yml                  # (opsional) dbt_utils saja
-│   ├── models/
-│   │   ├── staging/                  # stg_fx_rates, stg_weather_daily, stg_air_quality_hourly
-│   │   ├── intermediate/             # int_air_quality_daily
-│   │   └── marts/                    # fct_daily_signals, fct_anomalies
-│   └── tests/                        # singular tests
-├── sql/
-│   └── grants_looker_reader.sql      # buat user read-only untuk Looker Studio
-├── tests/                            # pytest: rules, parsing, idempotensi (HTTP di-mock)
-├── docs/
-│   ├── PLAN.md                       # dokumen ini
-│   └── img/                          # screenshot dashboard
-├── .env.example                      # daftar variabel, TANPA nilai rahasia
-├── .gitignore                        # .env, .venv, target/, .dlt/secrets.toml, *.duckdb
-├── pyproject.toml
-├── uv.lock
-└── README.md
+.github/workflows/   daily.yml (schedule + manual backfill), ci.yml (every PR)
+src/jds/             config, logging_setup, http, check_db, pipeline, sources/ (dlt resources),
+                     run_dbt, ci_schemas, check_reader, peek, ui, alerts/ (rules, telegram, run_alerts)
+transform/           dbt project: models/{staging,intermediate,marts}, tests/, macros/, profiles.yml
+sql/                 grants_looker_reader.sql
+tests/               pytest (HTTP mocked, idempotency against a temporary DuckDB)
+docs/                PLAN.md, img/dashboard.png
 ```
 
 ---
 
-## 6. Desain Data & Idempotensi (ringkas)
+## 6. Data design and idempotency
 
-| Tabel raw (schema `raw`) | Grain | `primary_key` (merge) | Index |
-|---|---|---|---|
-| `raw.fx_rates` | 1 baris per tanggal kurs per pasangan | `(rate_date, base, quote)` | primary key |
-| `raw.weather_daily` | 1 baris per tanggal WIB per lokasi | `(date_wib, location_id)` | primary key |
-| `raw.air_quality_hourly` | 1 baris per jam WIB per lokasi | `(ts_wib, location_id)` | primary key + index `date(ts_wib)` |
-| `ops.alert_log` | 1 baris per anomali yang terkirim | `(signal_date, alert_type)` | primary key |
-
-- Semua request Open-Meteo memakai `timezone=Asia/Jakarta`. Kolom tanggal disimpan sebagai `date_wib` (`date`), jam sebagai `timestamptz`.
-- Rerun tanggal yang sama akan menimpa baris dengan key yang sama, bukan menambah.
-- Peringatan hanya dikirim kalau `(signal_date, alert_type)` belum ada di `alert_log`, sehingga rerun tidak membuat spam.
-- Aturan anomali:
-  - **Kurs:** `abs(rate_t / rate_{t-1 kerja} - 1) > 1%`
-  - **PM2.5:** rata-rata harian (24 jam WIB) `> 55 µg/m³` (batas kategori "Tidak Sehat" ISPU), dan jam puncaknya disebut di pesan. Hanya dinilai untuk **hari yang sudah lengkap** (kemarin, 24 jam aktual, `is_forecast = false`).
-- **Cara kirim (keputusan 2026-11-21):** tidak ada pesan peringatan terpisah. Setiap pagi dikirim **1 pesan ringkasan**. Kalau ada anomali, pesan diberi penanda ⚠️ di bagian atas. Alasannya, pratinjau Tahap 3 menunjukkan PM2.5 > 55 di 5 dari 7 hari, sehingga pesan terpisah akan menimbulkan *alert fatigue*. Dedup tetap lewat `ops.alert_log`.
-
-### Kredensial
-| Nama | Dipakai oleh | Disimpan di |
+| Table | Grain | Merge key |
 |---|---|---|
-| `DATABASE_URL` | dlt, dbt, alert (user pemilik / pipeline) | `.env` lokal + GitHub Secrets |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alert | `.env` lokal + GitHub Secrets |
-| user `looker_reader` + password | Looker Studio saja | hanya di Looker Studio, tidak di repo |
+| `raw.fx_rates` | one row per rate date and pair | `(rate_date, base, quote)` |
+| `raw.weather_daily` | one row per WIB date and location | `(date_wib, location_id)` |
+| `raw.air_quality_hourly` | one row per WIB hour and location | `(ts_wib, location_id)` |
+| `ops.alert_log` | one row per sent summary or anomaly | `(signal_date, alert_type, location_id)` |
 
-Format `DATABASE_URL`: `postgresql://<user>:<password>@<host>.neon.tech/<db>?sslmode=require`. Semua modul membaca `DATABASE_URL` lewat `jds.config` (dlt menerimanya sebagai argumen `credentials`; dbt lewat `jds.run_dbt` yang memecahnya menjadi `DBT_PG_*` untuk `profiles.yml`). Workflow production juga memeriksa host terhadap repository variable `EXPECTED_DB_HOST`.
+- Open-Meteo requests use `timezone=Asia/Jakarta`; dates are stored as `date_wib`, hours as `timestamptz`.
+- Re-running a date overwrites rows with the same key instead of adding new ones.
+- Anomaly rules:
+  - **FX:** `abs(rate_t / rate_previous_business_day - 1) > 1%`
+  - **PM2.5:** daily mean over 24 WIB hours `> 55 µg/m³` (the ISPU "unhealthy" boundary), with the
+    peak hour in the message, judged on **complete days only** (24 actual hours, no forecasts).
+- **Delivery (decided 2026-11-21):** no separate alert messages. One **summary per morning**, with
+  a ⚠️ line on top when there are new anomalies. The stage 3 preview showed PM2.5 above 55 on 5 of
+  7 days, so separate alerts would cause alert fatigue. Dedup still goes through `ops.alert_log`.
+
+### Credentials
+| Name | Used by | Stored in |
+|---|---|---|
+| `DATABASE_URL` | dlt, dbt, alerts (owner role) | local `.env` + GitHub Secrets |
+| `CI_DATABASE_URL` | CI (Neon dev branch) | GitHub Secrets |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | alerts | local `.env` + GitHub Secrets |
+| `looker_reader` password | Looker Studio | Looker Studio (and optionally local `.env` for `check_reader`) |
+| `EXPECTED_DB_HOST` | daily workflow guard | GitHub repository variable (not a secret) |
+
+Every module reads `DATABASE_URL` through `jds.config`; dlt receives it as `credentials`, and dbt
+gets it through `jds.run_dbt`, which splits it into `DBT_PG_*` for `profiles.yml`.
 
 ---
 
-## 7. Urutan Tahap Kerja (setiap tahap punya uji yang terlihat)
+## 7. Stages (each with a visible test)
 
-| # | Tahap | Hasil | Cara uji (yang bisa kamu lihat) |
+| # | Stage | Output | How to verify |
 |---|---|---|---|
-| 0 | **Setup lokal** | `uv init`, `pyproject.toml`, `.gitignore`, `.env.example`, git repo | `uv sync` sukses. `uv run dlt --version` dan `uv run dbt --version` mencetak versi. `git status` tidak menampilkan `.env`. |
-| 1 | **Setup Neon** | Daftar Neon (login GitHub), project `jakarta-daily-signals` region Singapura, database `jds`, schema `raw/staging/marts/ops`, branch `dev` untuk pengembangan | Skrip cek koneksi (`uv run python -m jds.check_db`) mencetak versi Postgres dan daftar 4 schema |
-| 2 | **Ingest kurs → DuckDB lokal** | Resource dlt Frankfurter | `uv run python -m jds.pipeline --source fx --dest duckdb`, lalu query DuckDB menampilkan baris USD/IDR |
-| 3 | **Ingest cuaca + udara → DuckDB** | Resource Open-Meteo | 1 baris weather_daily dan 24 baris air_quality untuk tanggal uji |
-| 4 | **Uji idempotensi + unit test** | pytest dengan HTTP di-mock | `uv run pytest` hijau. Jalankan pipeline 2× untuk tanggal sama, jumlah baris tetap sama. |
-| 5 | **Ganti tujuan ke Neon (branch `dev`)** | Destination `postgres`, kredensial dari `.env` | Tabel muncul di Neon SQL Editor. Query `COUNT(*) GROUP BY date_wib` menunjukkan tidak ada duplikat setelah 2× run. |
-| 6 | **Backfill ~90 hari** | Parameter `--start/--end` | Query di Neon SQL Editor menunjukkan ±90 hari kurs & PM2.5 |
-| 7 | **dbt models + tests** | staging → intermediate → marts. dbt dijalankan lewat wrapper `jds.run_dbt` (memecah `DATABASE_URL` → env `DBT_PG_*`, membangunkan Neon) | `uv run python -m jds.run_dbt build` → semua model & test PASS. Ubah satu nilai jadi NULL, lalu test terlihat FAIL. |
-| 8 | **Alert Telegram** | rules + dedup | `--dry-run` mencetak isi pesan di log. Run nyata: pesan masuk ke HP. Rerun: log menulis "already sent, skip". |
-| 9 | **Workflow harian** | `daily.yml` + secrets, menulis ke branch `main` Neon | Run via "Run workflow" hijau di tab Actions, data hari itu masuk. Esok harinya cron jalan sendiri. |
-| 10 | **CI di PR** | `ci.yml`, schema `ci_pr_<nomor>` (dihapus setelah run) | Buka PR dengan test yang sengaja rusak, status merah. Perbaiki, status hijau. |
-| 11 | **Dashboard Looker Studio** | User `looker_reader`, sumber data PostgreSQL (SSL aktif), 5 chart sesuai pertanyaan | Link publik bisa dibuka dari mode incognito. `looker_reader` gagal saat mencoba `INSERT` (bukti read-only). |
-| 12 | **README & polish** | Diagram, screenshot, keputusan desain, catatan portabilitas ke BigQuery | Teman/rekruter bisa mengikuti README dari nol |
+| 0 | **Local setup** | `pyproject.toml`, `.gitignore`, `.env.example`, git repo | `uv sync` succeeds; `dlt --version` and `dbt --version` print; `git status` does not show `.env`. |
+| 1 | **Neon setup** | Project in Singapore, database `jds`, schemas `raw/staging/marts/ops`, `dev` branch | `uv run python -m jds.check_db` prints the Postgres version and the four schemas. |
+| 2 | **FX → local DuckDB** | Frankfurter dlt resource | `jds.pipeline --source fx --dest duckdb`, then USD/IDR rows in DuckDB. |
+| 3 | **Weather + air → DuckDB** | Open-Meteo resources | One weather row and 24 air rows for a test date. |
+| 4 | **Idempotency + unit tests** | pytest with mocked HTTP | `uv run pytest` green; two runs for the same dates keep row counts. |
+| 5 | **Switch to Neon (`dev` branch)** | `postgres` destination | Tables visible in Neon; no duplicates after two runs. |
+| 6 | **~90-day backfill** | `--start/--end` | About 90 days of FX and PM2.5 in Neon. |
+| 7 | **dbt models + tests** | staging → intermediate → marts via `jds.run_dbt` | `jds.run_dbt build` passes; a forced NULL makes a test fail. |
+| 8 | **Telegram alerts** | rules + dedup | `--dry-run` prints the message; a real run delivers it; a rerun logs "already sent". |
+| 9 | **Daily workflow** | `daily.yml` + secrets, writing to the production branch | Manual run is green; the next morning the schedule runs on its own. |
+| 10 | **CI on PRs** | `ci.yml`, `ci_pr_<n>` schemas dropped after each run | A PR with a deliberately broken test turns red, the fix turns it green. |
+| 11 | **Looker Studio dashboard** | `looker_reader`, PostgreSQL data sources with SSL, five charts | The public link opens without login; `looker_reader` cannot `INSERT`. |
+| 12 | **README and polish** | Diagram, screenshot, design decisions, BigQuery notes | Someone can follow the README from a fresh clone. |
 
 ---
 
-## 8. Keputusan
+## 8. Decisions
 
-| # | Pertanyaan | Keputusan |
+| # | Question | Decision |
 |---|---|---|
-| 1 | Gudang data | **Neon Postgres (Free)**. BigQuery batal karena billing account Google Cloud ditutup dan tidak bisa dibuka lagi (status "not in good standing"). |
-| 2 | Ambang PM2.5 | Rata-rata harian > 55 µg/m³ untuk hari yang sudah lengkap, jam puncak disebut di pesan. Peringatan **digabung ke ringkasan harian** (penanda ⚠️), bukan pesan terpisah. Alasannya: pratinjau data menunjukkan 5 dari 7 hari melewati ambang. *(diputuskan 2026-11-21)* |
-| 3 | Sumber kurs | Frankfurter/ECB, dengan keterangan jujur di dashboard *(rekomendasi, bisa diubah)* |
-| 4 | Lokasi | 1 titik: Monas (-6.1754, 106.8272), desain `location_id` agar mudah ditambah *(rekomendasi, bisa diubah)* |
-| 5 | Repo | Publik *(rekomendasi, bisa diubah)* |
-| 6 | Jam kirim | 07:17 WIB (`17 0 * * *` UTC), berisi kurs hari kerja terakhir, cuaca & PM2.5 kemarin, dan prakiraan hari ini *(rekomendasi, bisa diubah)* |
+| 1 | Warehouse | **Neon Postgres (Free).** BigQuery was dropped because the Google Cloud billing account was closed and could not be reopened. |
+| 2 | PM2.5 threshold | Daily mean > 55 µg/m³ on complete days, peak hour in the message, **merged into the daily summary** with a ⚠️ marker instead of separate messages (5 of 7 preview days were above the threshold). *(2026-11-21)* |
+| 3 | FX source | Frankfurter/ECB, with an honest note on the dashboard. |
+| 4 | Location | One point: Monas (-6.1754, 106.8272); `location_id` keeps it easy to add more. |
+| 5 | Repository | Public. |
+| 6 | Send time | 07:17 WIB (`17 0 * * *` UTC): last business-day FX rate, yesterday's weather and PM2.5, today's forecast. |

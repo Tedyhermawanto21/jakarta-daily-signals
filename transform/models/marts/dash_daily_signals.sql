@@ -1,5 +1,4 @@
--- Sumber dashboard Looker Studio (pertanyaan 1, 2, 4): 1 baris per hari AKTUAL per lokasi.
--- Hari prakiraan tidak ikut. Penanda anomali diambil dari fct_anomalies (satu sumber aturan).
+-- Dashboard source: one row per actual day and location, anomaly flags from fct_anomalies.
 with signals as (
     select * from {{ ref('fct_daily_signals') }}
     where not weather_is_forecast
@@ -16,7 +15,7 @@ select
     s.usd_idr_rate,
     s.fx_rate_date,
     s.fx_is_carried_forward,
-    -- Perubahan % hanya di hari kurs terbit; akhir pekan/libur = null agar tidak dihitung ulang.
+    -- Null on carried-forward days so a Friday move is not counted three times.
     case when not s.fx_is_carried_forward then s.fx_pct_change end as fx_pct_change_day,
     case when fx.signal_date is not null then 1 else 0 end as fx_anomaly_flag,
 

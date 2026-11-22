@@ -17,7 +17,8 @@ YESTERDAY = {
     "pm25_peak_hour": 23,
     "pm25_category_ispu": "Tidak Sehat",
 }
-TODAY = {  # kurs 18 Nov ada di data (terbit 22:00 WIB) tapi TIDAK boleh muncul di laporan pagi
+# The 18 Nov rate exists (published 22:00 WIB) but must not appear in the morning report.
+TODAY = {
     "date_wib": date(2026, 11, 18),
     "usd_idr_rate": 99999.0,
     "fx_rate_date": date(2026, 11, 18),
@@ -49,7 +50,7 @@ def test_message_with_anomaly_has_warning_on_top():
     assert lines[0] == "⚠️ Udara tidak sehat: PM2.5 rata-rata 79.0 µg/m³"
     assert "Jakarta Daily Signals · Rabu, 18 Nov 2026" in text
     assert "💱 USD/IDR 18.271 (+0,07% vs 16 Nov), kurs ECB 17 Nov" in text
-    assert "99.999" not in text  # kurs hari ini tidak bocor ke laporan pagi
+    assert "99.999" not in text
     assert "🌡 Kemarin (Selasa 17 Nov): 25–33°C, hujan 2,7 mm" in text
     assert "🌫 PM2.5 kemarin: 79,0 µg/m³ (Tidak Sehat), puncak jam 23:00 WIB" in text
     assert "📅 Hari ini (prakiraan): 25–32°C, hujan 8,2 mm" in text

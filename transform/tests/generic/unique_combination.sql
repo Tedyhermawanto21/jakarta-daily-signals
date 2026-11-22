@@ -1,4 +1,4 @@
-{#- Gagal jika kombinasi kolom (grain tabel) muncul lebih dari sekali. -#}
+{#- Fails when a combination of columns (the table grain) appears more than once. -#}
 {% test unique_combination(model, columns) %}
 select {{ columns | join(', ') }}, count(*) as n
 from {{ model }}
