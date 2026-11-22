@@ -28,23 +28,23 @@ class ConfigError(RuntimeError):
     """Konfigurasi wajib tidak ada atau tidak valid."""
 
 
-def get_database_url(load_env: bool = True) -> str:
-    """Ambil DATABASE_URL dan validasi formatnya.
+def get_database_url(load_env: bool = True, env_name: str = "DATABASE_URL") -> str:
+    """Ambil URL database dari env `env_name` dan validasi formatnya.
 
     load_dotenv() tidak menimpa variabel yang sudah ada, jadi di CI nilai dari
     GitHub Secrets tetap dipakai.
     """
     if load_env:
         load_dotenv()
-    url = os.getenv("DATABASE_URL", "").strip()
+    url = os.getenv(env_name, "").strip()
     if not url:
         raise ConfigError(
-            "DATABASE_URL kosong. Isi di .env (lokal) atau GitHub Secrets (CI). Lihat .env.example."
+            f"{env_name} kosong. Isi di .env (lokal) atau GitHub Secrets (CI). Lihat .env.example."
         )
     if not url.startswith(("postgresql://", "postgres://")):
-        raise ConfigError("DATABASE_URL harus diawali 'postgresql://'.")
+        raise ConfigError(f"{env_name} harus diawali 'postgresql://'.")
     if "sslmode=" not in url:
-        raise ConfigError("DATABASE_URL wajib memuat 'sslmode=require' (Neon mewajibkan SSL).")
+        raise ConfigError(f"{env_name} wajib memuat 'sslmode=require' (Neon mewajibkan SSL).")
     return url
 
 
