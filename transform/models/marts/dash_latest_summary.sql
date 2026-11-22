@@ -1,6 +1,5 @@
--- Sumber scorecard Looker Studio (pertanyaan 5): 1 baris per lokasi.
--- summary_date = hari aktual terakhir (biasanya "kemarin" saat pipeline pagi jalan),
--- sama dengan isi pesan Telegram. Kurs memakai as-of rate pada tanggal itu.
+-- Dashboard scorecards: one row per location for the last actual day, like the Telegram
+-- summary. Labels stay Indonesian because the dashboard is.
 with daily as (
     select * from {{ ref('dash_daily_signals') }}
 ),

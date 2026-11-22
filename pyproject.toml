@@ -1,7 +1,7 @@
 [project]
 name = "jakarta-daily-signals"
 version = "0.1.0"
-description = "Ringkasan harian kurs USD/IDR, cuaca, dan kualitas udara Jakarta + peringatan Telegram."
+description = "Daily serverless pipeline for USD/IDR, weather and Jakarta air quality, with Telegram alerts."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [

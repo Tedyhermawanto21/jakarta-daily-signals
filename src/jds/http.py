@@ -1,8 +1,7 @@
-"""HTTP client bersama: satu Session, timeout, dan retry dengan backoff.
+"""Shared HTTP client: one session, a timeout, and retry with backoff.
 
-Aturan retry:
-- dicoba ulang : timeout, error koneksi, HTTP 429, HTTP 5xx  (biasanya sembuh sendiri)
-- langsung gagal: HTTP 4xx lain (mis. 404 tanggal/simbol salah) -> bug di request kita
+Retried: timeouts, connection errors, HTTP 429 and 5xx.
+Not retried: other 4xx, which mean the request itself is wrong.
 """
 
 from __future__ import annotations
@@ -22,14 +21,14 @@ from tenacity import (
 log = logging.getLogger(__name__)
 
 USER_AGENT = "jakarta-daily-signals/0.1 (+portfolio project)"
-DEFAULT_TIMEOUT = 30  # detik
+DEFAULT_TIMEOUT = 30
 
 _session = requests.Session()
 _session.headers.update({"User-Agent": USER_AGENT, "Accept": "application/json"})
 
 
 class TransientHTTPError(RuntimeError):
-    """Error HTTP yang layak dicoba ulang (429 / 5xx)."""
+    """HTTP error worth retrying (429 or 5xx)."""
 
 
 @retry(
@@ -40,10 +39,10 @@ class TransientHTTPError(RuntimeError):
     reraise=True,
 )
 def get_json(url: str, params: dict[str, Any] | None = None) -> Any:
-    """GET dan kembalikan JSON. Raise requests.HTTPError untuk 4xx non-429."""
+    """GET and return JSON. Raises requests.HTTPError for non-429 4xx."""
     log.debug("GET %s params=%s", url, params)
     resp = _session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
     if resp.status_code == 429 or resp.status_code >= 500:
-        raise TransientHTTPError(f"HTTP {resp.status_code} dari {resp.url}")
+        raise TransientHTTPError(f"HTTP {resp.status_code} from {resp.url}")
     resp.raise_for_status()
     return resp.json()

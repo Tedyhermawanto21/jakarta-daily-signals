@@ -2,22 +2,22 @@ version: 2
 
 sources:
   - name: raw
-    description: Data mentah hasil dlt (write_disposition=merge). Jangan diedit manual.
+    description: Raw tables loaded by dlt (write_disposition=merge). Do not edit by hand.
     schema: raw
     config:
-      # _dlt_load_id = epoch detik saat load. Merge menulis ulang baris, jadi max = load terakhir.
+      # _dlt_load_id is the load time in epoch seconds; merge rewrites rows on every load.
       loaded_at_field: "to_timestamp(_dlt_load_id::numeric)"
       freshness:
         warn_after: { count: 2, period: day }
         error_after: { count: 3, period: day }
     tables:
       - name: fx_rates
-        description: Kurs referensi ECB via Frankfurter. Hanya hari kerja ECB.
+        description: ECB reference rates via Frankfurter. ECB business days only.
         config:
-          freshness: # akhir pekan panjang + libur ECB
+          freshness: # long weekends and ECB holidays
             warn_after: { count: 4, period: day }
             error_after: { count: 6, period: day }
       - name: weather_daily
-        description: Cuaca harian Open-Meteo (Historical Forecast API), tanggal WIB.
+        description: Daily weather from Open-Meteo (Historical Forecast API), WIB dates.
       - name: air_quality_hourly
-        description: Kualitas udara per jam Open-Meteo (model CAMS), waktu WIB.
+        description: Hourly air quality from Open-Meteo (CAMS model), WIB times.

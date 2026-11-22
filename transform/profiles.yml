@@ -1,5 +1,4 @@
-# Tidak ada rahasia di file ini. Nilai DBT_PG_* diisi oleh `python -m jds.run_dbt`
-# dari DATABASE_URL (.env lokal / GitHub Secrets), jadi kredensial tetap satu sumber.
+# No secrets here: `python -m jds.run_dbt` fills DBT_PG_* from DATABASE_URL.
 jds:
   target: dev
   outputs:

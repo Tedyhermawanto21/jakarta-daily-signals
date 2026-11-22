@@ -1,4 +1,4 @@
--- 1 baris per (date_wib, location_id): kurs, cuaca, dan kualitas udara untuk dashboard.
+-- One row per (date_wib, location_id): FX rate, weather and air quality.
 with days as (
     select * from {{ ref('stg_weather_daily') }}
 ),
@@ -16,14 +16,13 @@ select
     d.date_wib,
     d.location_id,
 
-    -- Kurs: as-of join = kurs terakhir pada/sebelum tanggal ini (akhir pekan pakai Jumat)
+    -- As-of join: latest rate on or before this date (weekends use Friday)
     fx.rate as usd_idr_rate,
     fx.rate_date as fx_rate_date,
     fx.prev_rate_date as fx_prev_rate_date,
     fx.pct_change as fx_pct_change,
     coalesce(fx.rate_date < d.date_wib, false) as fx_is_carried_forward,
 
-    -- Cuaca
     d.weather_code,
     d.temp_min_c,
     d.temp_max_c,
@@ -33,13 +32,12 @@ select
     d.humidity_mean_pct,
     d.is_forecast as weather_is_forecast,
 
-    -- Kualitas udara
     aq.pm25_avg,
     aq.pm25_max,
     aq.pm25_peak_hour,
     coalesce(aq.hours_actual, 0) as aq_hours_actual,
     coalesce(aq.is_complete, false) as aq_is_complete,
-    -- Kategori ISPU PM2.5 (PermenLHK P.14/2020), hanya untuk hari lengkap
+    -- Indonesian ISPU category (PermenLHK P.14/2020), complete days only
     case
         when not coalesce(aq.is_complete, false) then null
         when aq.pm25_avg <= 15.5 then 'Baik'

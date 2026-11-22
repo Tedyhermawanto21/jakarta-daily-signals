@@ -1,7 +1,7 @@
-"""Logika ringkasan & anomali, tanpa I/O (mudah diuji).
+"""Daily summary and anomaly rules, without I/O.
 
-Keputusan PLAN §6: 1 pesan ringkasan per pagi. Anomali baru diberi penanda ⚠️ di atas pesan.
-Teks detail anomali berasal dari marts.fct_anomalies (satu sumber kata-kata).
+One summary message per morning, with a ⚠️ line per new anomaly. Message text is Indonesian
+because it is read by Jakarta residents; anomaly details come from marts.fct_anomalies.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ class Anomaly:
 
 
 def fmt_num(value: float, decimals: int = 1) -> str:
-    """Format Indonesia: 18263.5 -> '18.263,5'."""
+    """Indonesian number format: 18263.5 -> '18.263,5'."""
     s = f"{float(value):,.{decimals}f}"
     return s.replace(",", "_").replace(".", ",").replace("_", ".")
 
@@ -53,7 +53,7 @@ def fmt_short(d: date) -> str:
 def new_anomalies(
     candidates: Iterable[Anomaly], already_sent: set[tuple[date, str, str]]
 ) -> list[Anomaly]:
-    """Buang anomali yang sudah pernah dilaporkan (dedup per signal_date + alert_type + lokasi)."""
+    """Drop anomalies that were already reported (by date, type and location)."""
     return [a for a in candidates if a.key not in already_sent]
 
 
@@ -88,7 +88,7 @@ def _air_line(yesterday: Row | None) -> str:
 def build_message(
     report_date: date, yesterday: Row | None, today: Row | None, anomalies: list[Anomaly]
 ) -> str:
-    """Susun teks ringkasan harian (plain text, tanpa parse_mode)."""
+    """Plain-text daily summary (no parse_mode)."""
     if anomalies:
         header = [
             f"⚠️ {ANOMALY_TITLE.get(a.alert_type, a.alert_type)}: {a.detail}" for a in anomalies
@@ -103,8 +103,7 @@ def build_message(
 
     body = [
         f"Jakarta Daily Signals · {fmt_date(report_date)}",
-        # Kurs as-of KEMARIN: kurs ECB hari ini baru terbit ±22:00 WIB, jadi laporan pagi
-        # tidak mungkin memilikinya. Sama di produksi, dan jujur untuk laporan --date mundur.
+        # As-of yesterday: the ECB publishes today's rate around 22:00 WIB.
         _fx_line(yesterday),
         _weather_line(y_label, yesterday),
         _air_line(yesterday),

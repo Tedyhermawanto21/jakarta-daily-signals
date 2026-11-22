@@ -1,4 +1,4 @@
--- Sumber dashboard Looker Studio (pertanyaan 3: jam PM2.5 terburuk). Hanya jam AKTUAL.
+-- Dashboard source for the hour-of-day PM2.5 pattern. Actual hours only.
 select
     ts_wib,
     date_wib,

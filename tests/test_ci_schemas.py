@@ -65,7 +65,7 @@ def test_drop_schemas_drops_only_listed_schemas_quoted_and_commits():
     assert drop_schemas(conn, "ci_pr_7") == ["ci_pr_7_marts", "ci_pr_7_staging"]
 
     lookup, params = conn.executed[0]
-    assert params == ("ci_pr_7_",)  # pencarian berawalan "ci_pr_7_", bukan "ci_pr_7" (ci_pr_70)
+    assert params == ("ci_pr_7_",)  # not "ci_pr_7", which would also match ci_pr_70
     drops = [repr(q) for q, _ in conn.executed[1:]]
     assert len(drops) == 2
     assert "Identifier('ci_pr_7_marts')" in drops[0]
@@ -76,7 +76,7 @@ def test_drop_schemas_drops_only_listed_schemas_quoted_and_commits():
 def test_drop_schemas_is_idempotent_when_nothing_exists():
     conn = FakeConn([])
     assert drop_schemas(conn, "ci_pr_7") == []
-    assert len(conn.executed) == 1  # hanya query daftar schema
+    assert len(conn.executed) == 1
 
 
 def test_drop_schemas_refuses_bad_prefix_before_touching_db():
@@ -88,7 +88,7 @@ def test_drop_schemas_refuses_bad_prefix_before_touching_db():
 
 def test_cli_rejects_bad_prefix_without_connecting(monkeypatch):
     def boom(*_a, **_k):
-        raise AssertionError("tidak boleh konek")
+        raise AssertionError("must not connect")
 
     monkeypatch.setattr(ci_schemas, "connect", boom)
     monkeypatch.setenv("DBT_SCHEMA_PREFIX", "marts")
@@ -97,7 +97,7 @@ def test_cli_rejects_bad_prefix_without_connecting(monkeypatch):
 
 def test_run_dbt_rejects_bad_prefix_before_running_dbt(monkeypatch):
     def boom(*_a, **_k):
-        raise AssertionError("tidak boleh konek")
+        raise AssertionError("must not connect")
 
     monkeypatch.setattr(run_dbt, "connect", boom)
     monkeypatch.setattr(run_dbt, "get_database_url", boom)

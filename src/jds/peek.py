@@ -1,8 +1,7 @@
-"""Intip isi tabel di DuckDB lokal (hanya untuk uji lokal, read-only).
+"""Print rows from the local DuckDB file (read-only).
 
-uv run python -m jds.peek fx_rates
 uv run python -m jds.peek fx_rates --limit 20
-uv run python -m jds.peek air_quality_hourly --date 2026-11-20   # semua baris 1 tanggal
+uv run python -m jds.peek air_quality_hourly --date 2026-11-20
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ import duckdb
 
 from jds.pipeline import DATASET, LOCAL_DUCKDB, SOURCES
 
-# nama tabel -> kolom tanggal (whitelist, jadi aman dipakai di f-string SQL)
 DATE_COLUMNS = {s.table: s.date_column for s in SOURCES.values()}
 
 
@@ -23,11 +21,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("table", choices=sorted(DATE_COLUMNS))
     parser.add_argument("--limit", type=int, default=10)
-    parser.add_argument("--date", type=date.fromisoformat, help="filter 1 tanggal (WIB)")
+    parser.add_argument("--date", type=date.fromisoformat, help="filter one date (WIB)")
     args = parser.parse_args(argv)
 
     if not LOCAL_DUCKDB.exists():
-        print(f"{LOCAL_DUCKDB} belum ada. Jalankan pipeline dulu.", file=sys.stderr)
+        print(f"{LOCAL_DUCKDB} does not exist yet. Run the pipeline first.", file=sys.stderr)
         return 1
 
     table = f"{DATASET}.{args.table}"
@@ -42,13 +40,13 @@ def main(argv: list[str] | None = None) -> int:
         print(format_table(rel.columns, rows))
         total = con.sql(f"SELECT count(*) FROM {table}").fetchone()[0]
     if args.date:
-        print(f"Baris untuk {date_col} = {args.date}: {len(rows)}")
-    print(f"Total baris {table}: {total}")
+        print(f"Rows for {date_col} = {args.date}: {len(rows)}")
+    print(f"Total rows in {table}: {total}")
     return 0
 
 
 def format_table(columns: list[str], rows: list[tuple]) -> str:
-    """Tabel teks ASCII (aman untuk konsol Windows cp1252, beda dengan rel.show())."""
+    """Plain ASCII table (rel.show() breaks on Windows cp1252 consoles)."""
     cells = [[str(c) for c in columns]] + [[str(v) for v in row] for row in rows]
     widths = [max(len(r[i]) for r in cells) for i in range(len(columns))]
     lines = [" | ".join(v.ljust(w) for v, w in zip(r, widths, strict=True)) for r in cells]

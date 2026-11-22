@@ -1,5 +1,5 @@
--- 1 baris per anomali (signal_date, alert_type, location_id). Dibaca oleh alert Telegram (Tahap 8).
--- Kurs tidak terikat lokasi -> location_id = 'all'.
+-- One row per anomaly. FX is not tied to a location, so its location_id is 'all'.
+-- Details are Indonesian because they are sent as-is to Telegram.
 with fx as (
     select * from {{ ref('int_fx_daily_change') }}
     where pair = '{{ var("fx_pair") }}'

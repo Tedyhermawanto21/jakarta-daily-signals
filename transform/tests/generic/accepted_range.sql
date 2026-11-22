@@ -1,4 +1,4 @@
-{#- Gagal jika ada nilai di luar [min_value, max_value]. NULL diabaikan (pakai not_null). -#}
+{#- Fails on values outside [min_value, max_value]. NULLs are ignored. -#}
 {% test accepted_range(model, column_name, min_value=none, max_value=none) %}
 select {{ column_name }}
 from {{ model }}

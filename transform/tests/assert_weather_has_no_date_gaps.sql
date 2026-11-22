@@ -1,6 +1,4 @@
--- Gagal jika ada tanggal yang bolong di antara tanggal cuaca (per lokasi).
--- Backfill Tahap 6 pernah menghasilkan baris kosong;
--- tanggal hilang adalah bentuk lain dari masalah yang sama.
+-- Fails when a date is missing between weather dates (per location).
 select
     location_id,
     date_wib,

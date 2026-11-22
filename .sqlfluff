@@ -1,9 +1,9 @@
-# Lint SQL dbt. Templater jinja (bukan dbt) agar lint tidak butuh koneksi database.
+# Jinja templater instead of dbt, so linting needs no database connection.
 [sqlfluff]
 dialect = postgres
 templater = jinja
 max_line_length = 100
-# ST06 (urutan kolom: wildcard/simple dulu) bertentangan dengan urutan yang mudah dibaca di mart.
+# ST06 forces a column order that hurts readability in the marts.
 exclude_rules = ST06
 
 [sqlfluff:templater:jinja]
@@ -26,5 +26,5 @@ extended_capitalisation_policy = lower
 capitalisation_policy = lower
 
 [sqlfluff:rules:references.keywords]
-# Kolom `value` di fct_anomalies adalah kontrak mart (dibaca dashboard); tidak diganti nama.
+# `value` in fct_anomalies is part of the mart contract.
 ignore_words = value

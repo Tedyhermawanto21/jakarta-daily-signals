@@ -1,10 +1,7 @@
-"""Idempotensi end-to-end: dlt sungguhan -> DuckDB sementara, semua API di-mock.
+"""End-to-end idempotency: real dlt into a temporary DuckDB, all APIs mocked.
 
-Membuktikan write_disposition="merge" + primary_key:
-- rerun data sama          -> jumlah baris tetap
-- nilai berubah            -> baris DITIMPA, bukan ditambah
-- rentang tumpang tindih   -> tidak ada duplikat
-- prakiraan -> aktual      -> baris yang sama berganti status
+Same data rerun keeps row counts, changed values overwrite rows, overlapping ranges
+do not duplicate, and forecast rows turn into actuals in place.
 """
 
 from __future__ import annotations
@@ -27,7 +24,7 @@ def _days(start: date, end: date) -> list[date]:
 
 
 class FakeApis:
-    """Meniru Frankfurter & Open-Meteo. `version` mengubah nilai untuk uji penimpaan."""
+    """Fake Frankfurter and Open-Meteo. Bumping `version` changes every value."""
 
     def __init__(self):
         self.version = 1
@@ -39,7 +36,7 @@ class FakeApis:
         if url.startswith(frankfurter.BASE_URL):
             start_s, end_s = url.rsplit("/", 1)[1].split("..")
             days = _days(date.fromisoformat(start_s), date.fromisoformat(end_s))
-            weekdays = [d for d in days if d.weekday() < 5]  # ECB: hari kerja saja
+            weekdays = [d for d in days if d.weekday() < 5]
             return {
                 "base": params["base"],
                 "rates": {d.isoformat(): {"IDR": 18000 + d.day + self.version} for d in weekdays},
@@ -60,7 +57,7 @@ class FakeApis:
         if url == open_meteo.AIR_QUALITY_URL:
             hours = [f"{d.isoformat()}T{h:02d}:00" for d in days for h in range(24)]
             return {**meta, "hourly": {"time": hours, "pm2_5": [40.0 + self.version] * len(hours)}}
-        raise AssertionError(f"URL tak terduga: {url}")
+        raise AssertionError(f"Unexpected URL: {url}")
 
 
 @pytest.fixture
@@ -73,7 +70,7 @@ def fake_apis(monkeypatch) -> FakeApis:
 
 @pytest.fixture
 def pipeline(tmp_path) -> dlt.Pipeline:
-    """Pipeline terisolasi: state dlt & file DuckDB di folder sementara pytest."""
+    """Isolated pipeline: dlt state and DuckDB file live in pytest's tmp_path."""
     return dlt.pipeline(
         pipeline_name="jds_test",
         pipelines_dir=str(tmp_path / "pipelines"),
@@ -87,8 +84,8 @@ def query(pipeline: dlt.Pipeline, sql: str):
         return client.execute_sql(sql)
 
 
-START, END = date(2026, 11, 16), date(2026, 11, 20)  # Senin..Jumat
-AFTER = datetime(2026, 11, 22, 7, 17, tzinfo=WIB)  # semua tanggal uji sudah lewat
+START, END = date(2026, 11, 16), date(2026, 11, 20)  # Monday..Friday
+AFTER = datetime(2026, 11, 22, 7, 17, tzinfo=WIB)  # every test date is in the past
 
 
 def test_rerun_same_range_keeps_row_counts(pipeline, fake_apis):
@@ -100,12 +97,12 @@ def test_rerun_same_range_keeps_row_counts(pipeline, fake_apis):
     assert first["weather_daily"].rows == 5
     assert first["air_quality_hourly"].rows == 5 * 24
     assert all(s.duplicate_keys == 0 for s in second.values())
-    assert fake_apis.calls == 6  # 3 API x 2 run: benar-benar mengambil ulang
+    assert fake_apis.calls == 6  # 3 APIs x 2 runs: data really was fetched twice
 
 
 def test_changed_values_overwrite_existing_rows(pipeline, fake_apis):
     load(pipeline, ALL, START, END, AFTER)
-    fake_apis.version = 2  # sumber merevisi nilainya
+    fake_apis.version = 2  # the source revises its values
     summary = load(pipeline, ALL, START, END, AFTER)
 
     assert summary["fx_rates"].rows == 5
@@ -119,7 +116,7 @@ def test_overlapping_ranges_do_not_duplicate(pipeline, fake_apis):
     load(pipeline, ALL, date(2026, 11, 16), date(2026, 11, 18), AFTER)
     summary = load(pipeline, ALL, date(2026, 11, 17), date(2026, 11, 20), AFTER)
 
-    assert summary["fx_rates"].rows == 5  # 16..20, bukan 3 + 4 = 7
+    assert summary["fx_rates"].rows == 5  # 16..20, not 3 + 4 = 7
     assert summary["weather_daily"].rows == 5
     assert summary["air_quality_hourly"].rows == 5 * 24
     assert all(s.duplicate_keys == 0 for s in summary.values())
@@ -131,7 +128,7 @@ def test_forecast_rows_become_actuals_on_next_run(pipeline, fake_apis):
     forecast_hours = query(pipeline, "SELECT count(*) FROM air_quality_hourly WHERE is_forecast")[
         0
     ][0]
-    assert forecast_hours == 13  # 11:00..23:00 pada 20-11
+    assert forecast_hours == 13  # 11:00..23:00 on 20 Nov
 
     summary = load(pipeline, ["air", "weather"], START, END, AFTER)
     assert summary["air_quality_hourly"].rows == 5 * 24

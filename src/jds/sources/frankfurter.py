@@ -1,9 +1,7 @@
-"""Sumber kurs dari Frankfurter API (data referensi ECB).
+"""FX rates from the Frankfurter API (ECB reference rates).
 
-Catatan sumber:
-- Hanya hari kerja ECB (tidak ada akhir pekan / libur ECB).
-- Kurs USD/IDR adalah kurs silang via EUR, bukan JISDOR Bank Indonesia.
-- Rentang yang dimulai di hari libur otomatis mundur ke hari kerja sebelumnya.
+ECB business days only. USD/IDR is a cross rate via EUR, not Bank Indonesia's JISDOR.
+A range starting on a holiday is moved back to the previous business day by the API.
 """
 
 from __future__ import annotations
@@ -24,12 +22,7 @@ SOURCE_NAME = "frankfurter/ecb"
 
 
 def parse_timeseries(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """Ubah respons time series Frankfurter menjadi baris datar.
-
-    Input : {"base": "USD", "rates": {"2026-11-20": {"IDR": 18263}, ...}}
-    Output: [{"rate_date": date(2026,11,20), "base": "USD", "quote": "IDR",
-              "rate": 18263.0, "source": "frankfurter/ecb"}, ...]
-    """
+    """{"base": "USD", "rates": {"2026-11-20": {"IDR": 18263}}} -> one row per date and quote."""
     base = payload["base"]
     rows = [
         {
@@ -59,12 +52,12 @@ def parse_timeseries(payload: dict[str, Any]) -> list[dict[str, Any]]:
 def fx_rates(
     start: date, end: date, base: str = "USD", quotes: tuple[str, ...] = ("IDR",)
 ) -> Iterator[dict[str, Any]]:
-    """Kurs harian base->quotes untuk rentang [start, end] (inklusif)."""
+    """Daily base->quote rates for [start, end], inclusive."""
     url = f"{BASE_URL}/{start.isoformat()}..{end.isoformat()}"
     payload = get_json(url, params={"base": base, "symbols": ",".join(quotes)})
     rows = parse_timeseries(payload)
     log.info(
-        "Frankfurter %s..%s (diminta %s..%s): %d baris",
+        "Frankfurter %s..%s (requested %s..%s): %d rows",
         payload.get("start_date"),
         payload.get("end_date"),
         start,

@@ -1,4 +1,4 @@
-"""Alur dedup run_alerts dengan store palsu (tanpa database)."""
+"""run_alerts dedup flow against an in-memory store."""
 
 from datetime import date
 
@@ -13,7 +13,7 @@ PM = Anomaly(date(2026, 11, 17), "pm25_high", "jkt_monas", "PM2.5 rata-rata 79.0
 
 class FakeStore:
     def __init__(self, candidates=(PM,)):
-        self.log: dict[tuple, str] = {}  # (date, type, loc) -> status
+        self.log: dict[tuple, str] = {}
         self.candidates = list(candidates)
 
     def summary_status(self, d):
@@ -84,7 +84,7 @@ def test_failed_send_releases_reservation_so_next_run_retries():
 def test_anomaly_already_reported_is_not_flagged_again_next_day():
     store, sender = FakeStore(), Sender()
     run(REPORT, store, sender, dry_run=False)
-    run(date(2026, 11, 19), store, sender, dry_run=False)  # kandidat sama muncul lagi
+    run(date(2026, 11, 19), store, sender, dry_run=False)  # same candidate again
     assert sender.sent[0].startswith("⚠️")
     assert sender.sent[1].startswith("✅")
 

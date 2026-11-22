@@ -1,13 +1,8 @@
-"""Entrypoint pipeline ingestion.
+"""Ingestion entrypoint. Safe to re-run: every resource merges on its primary key.
 
-Contoh:
-    uv run python -m jds.pipeline --source fx --dest duckdb
-    uv run python -m jds.pipeline --source weather --dest duckdb
-    uv run python -m jds.pipeline --source all --dest duckdb --start 2026-11-01 --end 2026-11-20
-    uv run python -m jds.pipeline --source all --dest postgres      # Neon, dari DATABASE_URL
-
-Aman dijalankan ulang: semua resource memakai write_disposition="merge" dengan primary key,
-jadi tanggal yang sama akan ditimpa, bukan diduplikasi.
+uv run python -m jds.pipeline --source fx --dest duckdb
+uv run python -m jds.pipeline --source all --dest duckdb --start 2026-11-01 --end 2026-11-20
+uv run python -m jds.pipeline --source all --dest postgres
 """
 
 from __future__ import annotations
@@ -32,19 +27,18 @@ from jds.sources.open_meteo import air_quality_hourly, weather_daily
 log = logging.getLogger("jds.pipeline")
 
 DATASET = "raw"
-# Path ABSOLUT dari root repo, bukan relatif ke cwd: dlt menyimpan state pipeline secara global
-# (~/.dlt/pipelines/jds_duckdb) dan memakai ulang path database lama untuk path relatif, sehingga
-# salinan repo kedua diam-diam menulis ke file milik salinan pertama (ditemukan saat uji Tahap 12).
+# Absolute on purpose: dlt keeps pipeline state in ~/.dlt and reuses the stored path for
+# relative paths, so a second clone would silently write into the first clone's file.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LOCAL_DUCKDB = REPO_ROOT / "data" / "jds_local.duckdb"
-DEFAULT_LOOKBACK_DAYS = 7  # cukup untuk melewati akhir pekan + libur ECB beruntun
+DEFAULT_LOOKBACK_DAYS = 7
 
 
 @dataclass(frozen=True)
 class SourceSpec:
     table: str
-    date_column: str  # untuk ringkasan log & filter peek
-    primary_key: tuple[str, ...]  # harus sama dengan primary_key di @dlt.resource
+    date_column: str
+    primary_key: tuple[str, ...]
 
 
 SOURCES: dict[str, SourceSpec] = {
@@ -71,13 +65,13 @@ def today_wib() -> date:
 
 
 def resolve_range(start: date | None, end: date | None, today: date) -> tuple[date, date]:
-    """Default: [today-7, today] dalam WIB. Tanggal masa depan ditolak."""
+    """Default range is [today - 7, today] in WIB. Future dates are rejected."""
     end = end or today
     start = start or end - timedelta(days=DEFAULT_LOOKBACK_DAYS)
     if end > today:
-        raise ValueError(f"--end {end} ada di masa depan (hari ini WIB: {today}).")
+        raise ValueError(f"--end {end} is in the future (today in WIB: {today}).")
     if start > end:
-        raise ValueError(f"--start {start} setelah --end {end}.")
+        raise ValueError(f"--start {start} is after --end {end}.")
     return start, end
 
 
@@ -86,13 +80,11 @@ def make_destination(dest: str):
         LOCAL_DUCKDB.parent.mkdir(exist_ok=True)
         return dlt.destinations.duckdb(str(LOCAL_DUCKDB))
     if dest == "postgres":
-        url = get_database_url()  # ConfigError jika kosong / tanpa sslmode
-        log.info("Tujuan Neon Postgres: %s", mask_url(url))
-        # Neon compute tidur saat idle. Bangunkan dulu dengan retry (cold start), supaya
-        # koneksi pertama dlt tidak timeout. Gagal permanen (password salah) langsung raise.
-        connect(url).close()
+        url = get_database_url()
+        log.info("Destination Neon Postgres: %s", mask_url(url))
+        connect(url).close()  # wake the Neon compute with retries before dlt connects
         return dlt.destinations.postgres(credentials=url)
-    raise ValueError(f"Destination tidak dikenal: {dest}")
+    raise ValueError(f"Unknown destination: {dest}")
 
 
 def build_resources(selected: list[str], start: date, end: date, now: datetime) -> list:
@@ -105,7 +97,7 @@ def build_resources(selected: list[str], start: date, end: date, now: datetime) 
 
 
 def summarize(pipeline: dlt.Pipeline, selected: list[str]) -> dict[str, TableSummary]:
-    """Hitung baris & duplikat primary key per tabel. Duplikat > 0 = merge tidak bekerja."""
+    """Row and duplicate-key counts per table. Any duplicate means merge did not work."""
     out = {}
     with pipeline.sql_client() as client:
         for name in selected:
@@ -126,15 +118,14 @@ def summarize(pipeline: dlt.Pipeline, selected: list[str]) -> dict[str, TableSum
 def load(
     pipeline: dlt.Pipeline, selected: list[str], start: date, end: date, now: datetime
 ) -> dict[str, TableSummary]:
-    """Extract + load sumber terpilih ke pipeline, lalu kembalikan ringkasan per tabel."""
-    log.info("Menjalankan source=%s rentang=%s..%s", ",".join(selected), start, end)
+    log.info("Running source=%s range=%s..%s", ",".join(selected), start, end)
     load_info = pipeline.run(build_resources(selected, start, end, now))
-    log.info("Load selesai: %s", load_info)
+    log.info("Load finished: %s", load_info)
 
     summary = summarize(pipeline, selected)
     for table, s in summary.items():
         log.info(
-            "%s.%s sekarang: %d baris (%s s/d %s), duplikat key: %d",
+            "%s.%s now: %d rows (%s to %s), duplicate keys: %d",
             DATASET,
             table,
             s.rows,
@@ -147,7 +138,7 @@ def load(
 
 def run(source: str, dest: str, start: date, end: date) -> int:
     pipeline = dlt.pipeline(
-        pipeline_name=f"jds_{dest}",  # state dlt terpisah per destination
+        pipeline_name=f"jds_{dest}",
         destination=make_destination(dest),
         dataset_name=DATASET,
     )
@@ -156,7 +147,7 @@ def run(source: str, dest: str, start: date, end: date) -> int:
 
     dupes = {t: s.duplicate_keys for t, s in summary.items() if s.duplicate_keys}
     if dupes:
-        log.error("Ditemukan duplikat primary key: %s", dupes)
+        log.error("Duplicate primary keys found: %s", dupes)
         return 1
     return 0
 
@@ -164,7 +155,7 @@ def run(source: str, dest: str, start: date, end: date) -> int:
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     setup_logging()
-    parser = argparse.ArgumentParser(description="Ingestion Jakarta Daily Signals")
+    parser = argparse.ArgumentParser(description="Jakarta Daily Signals ingestion")
     parser.add_argument("--source", choices=[*SOURCES, "all"], default="all")
     parser.add_argument("--dest", choices=["duckdb", "postgres"], default="duckdb")
     parser.add_argument("--start", type=date.fromisoformat, help="YYYY-MM-DD (WIB)")
@@ -178,7 +169,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", exc)
         return 2
     except Exception:
-        log.exception("Pipeline gagal")
+        log.exception("Pipeline failed")
         return 1
 
 

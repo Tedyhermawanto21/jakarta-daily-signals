@@ -1,7 +1,5 @@
--- Setiap hari SEBELUM hari aktual terakhir (per lokasi) harus punya 24 jam aktual dengan PM2.5.
--- Hari aktual terakhir = hari ingest terakhir; sebagian jamnya masih prakiraan -> dikecualikan.
--- Sengaja tidak memakai now(): is_forecast ditentukan relatif ke waktu ingest, jadi test ini juga.
--- Data basi (ingest berhenti) ditangkap oleh `dbt source freshness`, bukan oleh test ini.
+-- Every day before the last actual day must have 24 actual hours with PM2.5.
+-- Not based on now(): stale data is caught by `dbt source freshness` instead.
 with days as (
     select * from {{ ref('int_air_quality_daily') }}
 ),
