@@ -32,7 +32,11 @@ from jds.sources.open_meteo import air_quality_hourly, weather_daily
 log = logging.getLogger("jds.pipeline")
 
 DATASET = "raw"
-LOCAL_DUCKDB = Path("data") / "jds_local.duckdb"
+# Path ABSOLUT dari root repo, bukan relatif ke cwd: dlt menyimpan state pipeline secara global
+# (~/.dlt/pipelines/jds_duckdb) dan memakai ulang path database lama untuk path relatif, sehingga
+# salinan repo kedua diam-diam menulis ke file milik salinan pertama (ditemukan saat uji Tahap 12).
+REPO_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_DUCKDB = REPO_ROOT / "data" / "jds_local.duckdb"
 DEFAULT_LOOKBACK_DAYS = 7  # cukup untuk melewati akhir pekan + libur ECB beruntun
 
 

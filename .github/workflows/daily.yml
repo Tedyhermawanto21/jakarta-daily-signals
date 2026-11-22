@@ -33,9 +33,19 @@ jobs:
     timeout-minutes: 20
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }} # Neon branch production
+      # Endpoint ID production (ep-...), disimpan sebagai repository VARIABLE (bukan rahasia).
+      # jds.config menolak DATABASE_URL yang host-nya berbeda -> secret salah isi = gagal di awal.
+      EXPECTED_DB_HOST: ${{ vars.EXPECTED_DB_HOST }}
       PYTHONUNBUFFERED: "1"
       LOG_LEVEL: INFO
     steps:
+      - name: Pastikan pengaman host production aktif
+        run: |
+          if [ -z "$EXPECTED_DB_HOST" ]; then
+            echo "::error::Repository variable EXPECTED_DB_HOST belum diisi (Settings > Secrets and variables > Actions > Variables)."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
