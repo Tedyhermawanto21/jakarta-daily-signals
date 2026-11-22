@@ -51,12 +51,13 @@ select
 
 from days as d
 left join lateral (
-    select *
-    from fx
-    where fx.rate_date <= d.date_wib
-    order by fx.rate_date desc
+    select r.*
+    from fx as r
+    where r.rate_date <= d.date_wib
+    order by r.rate_date desc
     limit 1
 ) as fx on true
 left join aq
-    on aq.date_wib = d.date_wib
-    and aq.location_id = d.location_id
+    on
+        d.date_wib = aq.date_wib
+        and d.location_id = aq.location_id

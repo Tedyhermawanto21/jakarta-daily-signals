@@ -40,5 +40,6 @@ select
         lpad(pm25_peak_hour::text, 2, '0')
     ) as detail
 from signals
-where aq_is_complete
+where
+    aq_is_complete
     and pm25_avg > {{ var('pm25_threshold') }}
