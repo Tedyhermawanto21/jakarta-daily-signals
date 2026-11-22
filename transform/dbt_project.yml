@@ -13,7 +13,7 @@ flags:
 vars:
   fx_pair: "USD/IDR"
   fx_change_threshold_pct: 1.0 # anomali kurs: |perubahan| > 1% vs hari kurs sebelumnya
-  pm25_threshold: 55 # anomali udara: rata-rata harian PM2.5 > 55 µg/m³ (hari lengkap)
+  pm25_threshold: 50 # anomali udara: rata-rata harian PM2.5 > 55 µg/m³ (hari lengkap)
 
 models:
   jds:
