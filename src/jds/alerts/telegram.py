@@ -1,15 +1,10 @@
-"""Klien Telegram Bot API minimal.
+"""Minimal Telegram Bot API client.
 
-Keamanan: token bot ada DI URL (https://api.telegram.org/bot<TOKEN>/...). Pesan error requests
-mencantumkan URL, jadi semua error di sini disaring dari token dan dilempar `from None`
-(tanpa traceback berantai yang memuat URL asli).
+The bot token is part of the URL, so every error is redacted and raised `from None`.
+sendMessage is retried on connection errors, 429 and 5xx, but never on a read timeout:
+the message may already have been delivered.
 
-Aturan retry sendMessage (cegah pesan ganda):
-- dicoba ulang : gagal konek (pesan belum terkirim), HTTP 429, HTTP 5xx
-- TIDAK diulang: read timeout (pesan mungkin sudah terkirim), HTTP 4xx lain
-
-Setup chat_id:
-    uv run python -m jds.alerts.telegram --chat-id   # setelah kirim /start ke bot
+    uv run python -m jds.alerts.telegram --chat-id   # after sending /start to the bot
 """
 
 from __future__ import annotations
@@ -35,15 +30,15 @@ from jds.logging_setup import setup_logging
 log = logging.getLogger(__name__)
 
 API_BASE = "https://api.telegram.org"
-TIMEOUT = 20  # detik
+TIMEOUT = 20
 
 
 class TelegramError(RuntimeError):
-    """Gagal permanen (tidak dicoba ulang)."""
+    """Permanent failure, not retried."""
 
 
 class _Retryable(RuntimeError):
-    """Gagal sementara; aman dicoba ulang karena pesan pasti belum terkirim."""
+    """Temporary failure where the message was certainly not sent."""
 
 
 def get_credentials() -> tuple[str, str]:
@@ -51,9 +46,7 @@ def get_credentials() -> tuple[str, str]:
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
     if not token or not chat_id:
-        raise ConfigError(
-            "TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID kosong. Isi di .env (lihat Tahap 8)."
-        )
+        raise ConfigError("TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is empty. Set them in .env.")
     return token, chat_id
 
 
@@ -65,7 +58,7 @@ def _log_retry(token: str):
     def before_sleep(state: RetryCallState) -> None:
         exc = state.outcome.exception() if state.outcome else None
         log.warning(
-            "Telegram gagal sementara (percobaan %d): %s. Mencoba lagi...",
+            "Telegram temporary failure (attempt %d): %s. Retrying...",
             state.attempt_number,
             _redact(str(exc), token),
         )
@@ -74,16 +67,16 @@ def _log_retry(token: str):
 
 
 def _call(token: str, method: str, payload: dict | None = None) -> dict:
-    """Satu panggilan API. Mengubah semua error menjadi _Retryable / TelegramError tanpa token."""
+    """One API call; every error becomes _Retryable or TelegramError, without the token."""
     url = f"{API_BASE}/bot{token}/{method}"
     try:
         resp = requests.post(url, json=payload or {}, timeout=TIMEOUT)
     except requests.ReadTimeout:
         raise TelegramError(
-            f"{method}: timeout setelah request terkirim; tidak diulang (cegah pesan ganda)."
+            f"{method}: timed out after the request was sent; not retried to avoid duplicates."
         ) from None
-    except requests.ConnectionError as exc:  # termasuk ConnectTimeout
-        raise _Retryable(f"{method}: gagal konek: {_redact(str(exc), token)}") from None
+    except requests.ConnectionError as exc:
+        raise _Retryable(f"{method}: connection failed: {_redact(str(exc), token)}") from None
 
     try:
         body = resp.json()
@@ -99,7 +92,7 @@ def _call(token: str, method: str, payload: dict | None = None) -> dict:
 
 
 def send_message(token: str, chat_id: str, text: str) -> int:
-    """Kirim teks biasa, kembalikan message_id."""
+    """Send plain text and return the message_id."""
     retrying = Retrying(
         retry=retry_if_exception_type(_Retryable),
         stop=stop_after_attempt(4),
@@ -116,12 +109,12 @@ def send_message(token: str, chat_id: str, text: str) -> int:
                     {"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
                 )
     except _Retryable as exc:
-        raise TelegramError(f"menyerah setelah 4 percobaan: {exc}") from None
+        raise TelegramError(f"gave up after 4 attempts: {exc}") from None
     return int(result["message_id"])
 
 
 def list_chats(token: str) -> list[tuple[int, str]]:
-    """Chat yang pernah mengirim pesan ke bot (dari getUpdates)."""
+    """Chats that have messaged the bot, from getUpdates."""
     chats: dict[int, str] = {}
     for update in _call(token, "getUpdates"):
         msg = update.get("message") or update.get("channel_post") or {}
@@ -136,8 +129,8 @@ def list_chats(token: str) -> list[tuple[int, str]]:
 
 def main(argv: list[str] | None = None) -> int:
     setup_logging()
-    parser = argparse.ArgumentParser(description="Helper setup Telegram")
-    parser.add_argument("--chat-id", action="store_true", help="tampilkan chat_id dari getUpdates")
+    parser = argparse.ArgumentParser(description="Telegram setup helper")
+    parser.add_argument("--chat-id", action="store_true", help="print chat ids from getUpdates")
     args = parser.parse_args(argv)
     if not args.chat_id:
         parser.print_help()
@@ -146,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:
-        log.error("TELEGRAM_BOT_TOKEN kosong di .env.")
+        log.error("TELEGRAM_BOT_TOKEN is empty in .env.")
         return 2
     try:
         chats = list_chats(token)
@@ -154,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("%s", exc)
         return 1
     if not chats:
-        log.warning("Belum ada chat. Buka bot di Telegram, kirim /start, lalu jalankan lagi.")
+        log.warning("No chats yet. Open the bot in Telegram, send /start, then run this again.")
         return 1
     for chat_id, label in chats:
         log.info("chat_id=%s  (%s)", chat_id, label)

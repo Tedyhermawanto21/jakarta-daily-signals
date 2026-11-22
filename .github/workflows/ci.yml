@@ -1,13 +1,12 @@
 name: ci
 
-# Setiap PR ke main: lint + unit test (tanpa rahasia), lalu dbt build ke schema sementara.
 on:
   pull_request:
     branches: [main]
 
 concurrency:
   group: ci-pr-${{ github.event.pull_request.number }}
-  # Tidak membatalkan run lama: langkah "hapus schema" run lama bisa menghapus schema run baru.
+  # Cancelling would let the old run's cleanup drop the new run's schemas.
   cancel-in-progress: false
 
 permissions:
@@ -19,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
-      # profiles.yml butuh nilai ini, tapi `dbt parse` tidak membuka koneksi. Bukan rahasia.
+      # Required by profiles.yml; `dbt parse` never connects.
       DBT_PG_HOST: localhost
       DBT_PG_USER: ci
       DBT_PG_PASSWORD: unused
@@ -28,13 +27,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
-      - name: Setup uv (+ Python dari .python-version)
+      - name: Set up uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.5"
           enable-cache: true
 
-      - name: Install dependensi + dev (persis sesuai uv.lock)
+      - name: Install dependencies from uv.lock
         run: uv sync --locked
 
       - name: Ruff lint
@@ -49,36 +48,36 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
-      - name: dbt parse (validasi project tanpa database)
+      - name: dbt parse
         run: uv run dbt parse --project-dir transform --profiles-dir transform
 
   dbt-build:
     name: dbt build (Neon dev, schema ci_pr_<n>)
     needs: lint-test
-    # PR dari fork tidak menerima secrets -> job ini dilewati, lint-test tetap jalan.
+    # Fork PRs get no secrets, so this job is skipped for them.
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
-      DATABASE_URL: ${{ secrets.CI_DATABASE_URL }} # Neon branch dev, BUKAN production
+      DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
       DBT_SCHEMA_PREFIX: ci_pr_${{ github.event.pull_request.number }}
       PYTHONUNBUFFERED: "1"
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
 
-      - name: Setup uv (+ Python dari .python-version)
+      - name: Set up uv
         uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.5"
           enable-cache: true
 
-      - name: Install dependensi
+      - name: Install dependencies from uv.lock
         run: uv sync --locked --no-dev
 
-      - name: dbt build -> ci_pr_<n>_staging / ci_pr_<n>_marts
+      - name: dbt build into ci_pr_<n>_staging and ci_pr_<n>_marts
         run: uv run python -m jds.run_dbt build
 
-      - name: Hapus schema CI (selalu, juga saat gagal)
+      - name: Drop CI schemas
         if: always()
         run: uv run python -m jds.ci_schemas drop

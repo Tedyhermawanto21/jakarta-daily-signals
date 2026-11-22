@@ -1,4 +1,4 @@
-"""Klien Telegram tanpa jaringan: retry yang aman & token tidak pernah bocor."""
+"""Telegram client without network: safe retries and the token never leaks."""
 
 import pytest
 import requests
@@ -48,7 +48,7 @@ def install(monkeypatch, fake):
 
 def test_success_returns_message_id(monkeypatch):
     fake = install(monkeypatch, FakePost(ok(7)))
-    assert send_message(TOKEN, "1", "hai") == 7
+    assert send_message(TOKEN, "1", "hi") == 7
     assert fake.calls == 1
 
 
@@ -61,20 +61,20 @@ def test_429_and_5xx_are_retried(monkeypatch):
             ok(),
         ),
     )
-    assert send_message(TOKEN, "1", "hai") == 42
+    assert send_message(TOKEN, "1", "hi") == 42
     assert fake.calls == 3
 
 
 def test_connect_error_is_retried(monkeypatch):
     fake = install(monkeypatch, FakePost(requests.ConnectionError("refused"), ok()))
-    assert send_message(TOKEN, "1", "hai") == 42
+    assert send_message(TOKEN, "1", "hi") == 42
     assert fake.calls == 2
 
 
 def test_read_timeout_is_not_retried_to_avoid_duplicates(monkeypatch):
     fake = install(monkeypatch, FakePost(requests.ReadTimeout("read timed out"), ok()))
-    with pytest.raises(TelegramError, match="tidak diulang"):
-        send_message(TOKEN, "1", "hai")
+    with pytest.raises(TelegramError, match="not retried"):
+        send_message(TOKEN, "1", "hi")
     assert fake.calls == 1
 
 
@@ -83,7 +83,7 @@ def test_bad_request_is_not_retried(monkeypatch):
         monkeypatch, FakePost(FakeResp(400, {"ok": False, "description": "chat not found"}))
     )
     with pytest.raises(TelegramError, match="chat not found"):
-        send_message(TOKEN, "1", "hai")
+        send_message(TOKEN, "1", "hi")
     assert fake.calls == 1
 
 
@@ -91,7 +91,7 @@ def test_token_never_leaks_in_errors_or_logs(monkeypatch, capsys):
     url_in_error = f"HTTPSConnectionPool: Max retries with url: /bot{TOKEN}/sendMessage"
     install(monkeypatch, FakePost(*[requests.ConnectionError(url_in_error)] * 4))
     with pytest.raises(TelegramError) as info:
-        send_message(TOKEN, "1", "hai")
+        send_message(TOKEN, "1", "hi")
     assert TOKEN not in str(info.value)
     assert info.value.__cause__ is None and info.value.__suppress_context__
     assert TOKEN not in capsys.readouterr().err

@@ -6,7 +6,7 @@ from jds.config import ConfigError, get_database_url
 
 
 def test_every_rejection_check_names_the_expected_layer():
-    # Tanpa expect_code, penolakan oleh lapisan yang salah (mis. 25006) bisa lolos diam-diam.
+    # Without expect_code, a denial by the wrong layer (e.g. 25006) would pass silently.
     for check in CHECKS:
         if not check.should_succeed:
             assert check.expect_code, check.name
@@ -20,13 +20,13 @@ def test_grant_layer_is_tested_with_forced_read_write_transaction():
 
 def test_reader_url_uses_its_own_env_name(monkeypatch):
     monkeypatch.delenv("LOOKER_READER_URL", raising=False)
-    with pytest.raises(ConfigError, match="LOOKER_READER_URL kosong"):
+    with pytest.raises(ConfigError, match="LOOKER_READER_URL is empty"):
         get_database_url(load_env=False, env_name="LOOKER_READER_URL")
 
 
 def test_cli_exits_2_without_url_and_never_connects(monkeypatch):
     def boom(*_a, **_k):
-        raise AssertionError("tidak boleh konek")
+        raise AssertionError("must not connect")
 
     monkeypatch.setattr(check_reader, "connect", boom)
     monkeypatch.setattr("jds.config.load_dotenv", lambda *a, **k: False)

@@ -5,7 +5,7 @@ import pytest
 from jds.pipeline import resolve_range
 from jds.sources.frankfurter import parse_timeseries
 
-# Contoh respons nyata (dipangkas) dari /v1/2026-11-14..2026-11-21?base=USD&symbols=IDR
+# Trimmed real response from /v1/2026-11-14..2026-11-21?base=USD&symbols=IDR
 PAYLOAD = {
     "amount": 1.0,
     "base": "USD",
@@ -37,10 +37,10 @@ def test_resolve_range_default_is_7_days_back():
 
 
 def test_resolve_range_rejects_future():
-    with pytest.raises(ValueError, match="masa depan"):
+    with pytest.raises(ValueError, match="in the future"):
         resolve_range(None, date(2026, 11, 22), date(2026, 11, 21))
 
 
 def test_resolve_range_rejects_inverted():
-    with pytest.raises(ValueError, match="setelah"):
+    with pytest.raises(ValueError, match="is after"):
         resolve_range(date(2026, 11, 20), date(2026, 11, 10), date(2026, 11, 21))

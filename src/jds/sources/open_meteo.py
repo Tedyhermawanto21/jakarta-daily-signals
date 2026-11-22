@@ -1,13 +1,8 @@
-"""Sumber cuaca & kualitas udara dari Open-Meteo (gratis, non-komersial, tanpa API key).
+"""Weather and air quality from Open-Meteo (free for non-commercial use, no API key).
 
-Catatan sumber:
-- Semua request memakai timezone=Asia/Jakarta, jadi "time" yang dikembalikan adalah waktu
-  lokal WIB TANPA offset (mis. "2026-11-20T13:00"). Offset ditempelkan di parser.
-- Koordinat dibulatkan ke grid model, dan grid weather != grid air quality. Koordinat grid
-  disimpan apa adanya (grid_latitude/grid_longitude) supaya transparan.
-- Air quality adalah model CAMS (estimasi grid), bukan sensor stasiun.
-- Tanggal/jam >= sekarang adalah PRAKIRAAN (is_forecast = true). Run berikutnya akan
-  menimpanya dengan nilai terbaru lewat merge.
+Requests use timezone=Asia/Jakarta, so timestamps come back as local time without an offset;
+the parser attaches it. Air quality is the CAMS model (grid estimate), not station sensors.
+Rows at or after "now" are forecasts (is_forecast) and get overwritten by later runs via merge.
 """
 
 from __future__ import annotations
@@ -25,10 +20,8 @@ from jds.http import get_json
 
 log = logging.getLogger(__name__)
 
-# Historical Forecast API, BUKAN api.open-meteo.com/v1/forecast: endpoint forecast biasa hanya
-# menyimpan ~75 hari ke belakang. Untuk tanggal lebih lama ia tetap HTTP 200 tapi nilainya null
-# (ditemukan saat backfill Tahap 6). Historical API memberi nilai identik untuk tanggal yang
-# tumpang tindih (diverifikasi 14..23 Nov 2026), grid sama, dan juga mencakup hari ini + prakiraan.
+# Not api.open-meteo.com/v1/forecast: that endpoint keeps ~75 days and returns nulls (HTTP 200)
+# for older dates. The historical forecast API returns identical values for overlapping dates.
 WEATHER_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
@@ -49,7 +42,7 @@ _TZ = ZoneInfo(TIMEZONE)
 
 
 def _columns_to_rows(block: dict[str, list[Any]]) -> Iterator[dict[str, Any]]:
-    """Open-Meteo mengirim data per kolom ({"time": [...], "x": [...]}); ubah jadi per baris."""
+    """Open-Meteo returns columns ({"time": [...], "x": [...]}); yield one dict per row."""
     keys = list(block)
     for values in zip(*(block[k] for k in keys), strict=True):
         yield dict(zip(keys, values, strict=True))
@@ -68,7 +61,7 @@ def _params(loc: Location, start: date, end: date) -> dict[str, Any]:
 def parse_weather_daily(
     payload: dict[str, Any], location_id: str, today: date
 ) -> list[dict[str, Any]]:
-    """Respons daily -> 1 baris per (date_wib, location_id)."""
+    """Daily response -> one row per (date_wib, location_id)."""
     rows = []
     for rec in _columns_to_rows(payload["daily"]):
         day = date.fromisoformat(rec.pop("time"))
@@ -88,7 +81,7 @@ def parse_weather_daily(
 def parse_air_quality_hourly(
     payload: dict[str, Any], location_id: str, now: datetime
 ) -> list[dict[str, Any]]:
-    """Respons hourly -> 1 baris per (ts_wib, location_id). ts_wib = timestamptz (+07:00)."""
+    """Hourly response -> one row per (ts_wib, location_id), ts_wib as timestamptz (+07:00)."""
     rows = []
     for rec in _columns_to_rows(payload["hourly"]):
         ts = datetime.fromisoformat(rec.pop("time")).replace(tzinfo=_TZ)
@@ -126,7 +119,7 @@ def weather_daily(
         rows = parse_weather_daily(get_json(WEATHER_URL, params), loc.location_id, now.date())
         empty = sum(r.get("temperature_2m_max") is None for r in rows)
         log.info(
-            "Open-Meteo weather %s %s..%s: %d hari (suhu kosong: %d)",
+            "Open-Meteo weather %s %s..%s: %d days (missing temperature: %d)",
             loc.location_id,
             start,
             end,
@@ -134,7 +127,7 @@ def weather_daily(
             empty,
         )
         if empty:
-            log.warning("%d hari cuaca tanpa nilai suhu: cek rentang data API.", empty)
+            log.warning("%d weather days have no temperature: check the API date range.", empty)
         yield from rows
 
 
@@ -161,7 +154,7 @@ def air_quality_hourly(
         rows = parse_air_quality_hourly(get_json(AIR_QUALITY_URL, params), loc.location_id, now)
         nulls = sum(r["pm2_5"] is None for r in rows)
         log.info(
-            "Open-Meteo air %s %s..%s: %d jam (pm2_5 kosong: %d)",
+            "Open-Meteo air %s %s..%s: %d hours (missing pm2_5: %d)",
             loc.location_id,
             start,
             end,

@@ -1,5 +1,4 @@
--- Perubahan kurs vs HARI KURS SEBELUMNYA yang tersedia (bukan "kemarin"):
--- ECB tidak terbit di akhir pekan/libur, jadi Senin dibandingkan dengan Jumat.
+-- Change vs the previous published rate, not the previous calendar day (Monday vs Friday).
 with rates as (
     select
         rate_date,

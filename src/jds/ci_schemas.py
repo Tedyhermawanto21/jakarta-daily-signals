@@ -1,13 +1,10 @@
-"""Schema sementara per PR untuk CI (Tahap 10).
+"""Temporary per-PR schemas for CI.
 
     DBT_SCHEMA_PREFIX=ci_pr_12 uv run python -m jds.ci_schemas list
     DBT_SCHEMA_PREFIX=ci_pr_12 uv run python -m jds.ci_schemas drop
 
-dbt menulis model ke `<prefix>_staging` / `<prefix>_marts` (lihat macro generate_schema_name).
-Setelah CI selesai, `drop` menghapus semua schema berawalan `<prefix>_`.
-
-Pengaman: prefix WAJIB berbentuk `ci_pr_<angka>`. Nama lain (mis. "marts", "raw", "")
-ditolak sebelum ada koneksi ke database, jadi skrip ini tidak bisa menghapus schema asli.
+The prefix must match ci_pr_<digits>; anything else is rejected before connecting,
+so this script can never drop a real schema such as marts or raw.
 """
 
 from __future__ import annotations
@@ -33,7 +30,7 @@ PREFIX_RE = re.compile(r"ci_pr_[0-9]{1,9}")
 def validate_prefix(prefix: str) -> str:
     if not PREFIX_RE.fullmatch(prefix):
         raise ConfigError(
-            f"{PREFIX_ENV}={prefix!r} tidak valid: harus berbentuk ci_pr_<nomor PR>, mis. ci_pr_12."
+            f"{PREFIX_ENV}={prefix!r} is invalid: expected ci_pr_<PR number>, e.g. ci_pr_12."
         )
     return prefix
 
@@ -50,7 +47,7 @@ def list_schemas(conn, prefix: str) -> list[str]:
 
 
 def drop_schemas(conn, prefix: str) -> list[str]:
-    """Hapus semua schema `<prefix>_*`. Idempoten: tidak ada schema = tidak ada yang dihapus."""
+    """Drop every <prefix>_* schema. Idempotent."""
     schemas = list_schemas(conn, prefix)
     with conn.cursor() as cur:
         for name in schemas:
@@ -78,12 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.action == "list":
             schemas = list_schemas(conn, prefix)
-            log.info("Schema %s_*: %s", prefix, ", ".join(schemas) or "(tidak ada)")
+            log.info("Schemas %s_*: %s", prefix, ", ".join(schemas) or "(none)")
         else:
             schemas = drop_schemas(conn, prefix)
-            log.info("Dihapus %d schema: %s", len(schemas), ", ".join(schemas) or "(tidak ada)")
+            log.info("Dropped %d schemas: %s", len(schemas), ", ".join(schemas) or "(none)")
     except Exception:
-        log.exception("Gagal %s schema %s_*", args.action, prefix)
+        log.exception("Failed to %s schemas %s_*", args.action, prefix)
         return 1
     finally:
         conn.close()
