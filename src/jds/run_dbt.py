@@ -9,6 +9,9 @@ dbt tidak membaca .env dan tidak bisa mem-parse URL Postgres. Wrapper ini:
 2. memecah DATABASE_URL menjadi env DBT_PG_* yang dibaca transform/profiles.yml,
 3. membangunkan Neon (retry cold start),
 4. menjalankan dbt lewat API programatik dbtRunner dengan --project-dir/--profiles-dir transform.
+
+CI: env DBT_SCHEMA_PREFIX=ci_pr_<n> membuat dbt menulis ke ci_pr_<n>_staging/_marts
+(divalidasi di sini; dibersihkan dengan `python -m jds.ci_schemas drop`).
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
 from jds.check_db import connect
+from jds.ci_schemas import PREFIX_ENV, validate_prefix
 from jds.config import ConfigError, get_database_url, mask_url
 from jds.logging_setup import setup_logging
 
@@ -59,6 +63,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     try:
+        prefix = os.environ.get(PREFIX_ENV, "").strip()
+        if prefix:
+            validate_prefix(prefix)  # cegah nama schema aneh sebelum dbt menulis apa pun
         url = get_database_url()
     except ConfigError as exc:
         log.error("%s", exc)
@@ -66,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
 
     os.environ.update(dbt_env_from_url(url))
     log.info("dbt -> %s", mask_url(url))
+    if prefix:
+        log.info("Schema CI: %s_staging, %s_marts (source raw tetap)", prefix, prefix)
     connect(url).close()  # bangunkan Neon sebelum dbt membuka banyak koneksi
 
     from dbt.cli.main import dbtRunner  # import lambat: dbt berat untuk diimpor
