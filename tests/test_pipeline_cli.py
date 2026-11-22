@@ -16,3 +16,12 @@ def test_postgres_without_database_url_exits_2_before_any_network(monkeypatch, c
     assert pipeline.main(["--source", "fx", "--dest", "postgres"]) == 2
     # setup_logging() memakai basicConfig(force=True) -> log ke stderr, bukan ke caplog
     assert "DATABASE_URL kosong" in capsys.readouterr().err
+
+
+def test_local_duckdb_path_is_absolute_inside_repo():
+    # Path relatif membuat dlt memakai ulang path dari state global pipeline milik salinan lain.
+    from jds.pipeline import LOCAL_DUCKDB, REPO_ROOT
+
+    assert LOCAL_DUCKDB.is_absolute()
+    assert LOCAL_DUCKDB.parent == REPO_ROOT / "data"
+    assert (REPO_ROOT / "pyproject.toml").exists()
